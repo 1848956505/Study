@@ -1,0 +1,37 @@
+:root {
+  --font-body: 'Segoe UI', 'Aptos', 'Trebuchet MS', sans-serif;
+  --font-display: 'Georgia', 'Times New Roman', serif;
+  --color-bg: #eef3fb;
+  --color-panel: rgba(255, 255, 255, 0.82);
+  --color-panel-solid: #ffffff;
+  --color-panel-strong: #10182b;
+  --color-panel-muted: rgba(16, 24, 43, 0.62);
+  --color-text: #162033;
+  --color-text-muted: #667085;
+  --color-text-soft: #8c94a8;
+  --color-accent: #3c68ff;
+  --color-accent-strong: #1f4ae0;
+  --color-accent-soft: rgba(60, 104, 255, 0.12);
+  --color-success: #1f9d63;
+  --color-warning: #d97706;
+  --color-danger: #dc2626;
+  --color-border: rgba(22, 32, 51, 0.12);
+  --color-border-strong: rgba(22, 32, 51, 0.18);
+  --shadow-soft: 0 18px 40px rgba(20, 34, 66, 0.08);
+  --shadow-float: 0 22px 60px rgba(16, 24, 43, 0.12);
+  --radius-xl: 24px;
+  --radius-lg: 20px;
+  --radius-md: 14px;
+  --radius-sm: 10px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --rail-width: 56px;
+  --topbar-height: 42px;
+  --statusbar-height: 24px;
+}

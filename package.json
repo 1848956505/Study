@@ -1,0 +1,21 @@
+{
+  "name": "study-accelerator",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "test": "node apps/api/test/run-tests.js",
+    "test:api": "node apps/api/test/run-tests.js",
+    "dev:web": "npm run dev -w @study-accelerator/web",
+    "dev:api": "npm run dev -w @study-accelerator/api",
+    "start:api": "npm run dev -w @study-accelerator/api",
+    "dev:all": "powershell -ExecutionPolicy Bypass -File scripts/start-dev.ps1"
+  }
+}

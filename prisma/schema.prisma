@@ -1,0 +1,156 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id              String           @id @default(cuid())
+  email           String           @unique
+  passwordHash    String
+  nickname        String
+  status          String           @default("active")
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  settings        UserSetting?
+  knowledgeSpaces KnowledgeSpace[]
+}
+
+model UserSetting {
+  id                String @id @default(cuid())
+  userId            String @unique
+  theme             String @default("system")
+  editorPreferences Json?
+  locale            String @default("zh-CN")
+  user              User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model KnowledgeSpace {
+  id            String         @id @default(cuid())
+  userId        String
+  name          String
+  description   String         @default("")
+  defaultFlag   Boolean        @default(true)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  folders       Folder[]
+  notes         Note[]
+  tags          Tag[]
+  ingestionJobs IngestionJob[]
+}
+
+model Folder {
+  id         String   @id @default(cuid())
+  spaceId    String
+  parentId   String?
+  name       String
+  sortOrder  Int      @default(0)
+  pathCache  String   @default("/")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  space      KnowledgeSpace @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  parent     Folder?  @relation("FolderTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children   Folder[] @relation("FolderTree")
+  notes      Note[]
+}
+
+model Note {
+  id            String          @id @default(cuid())
+  spaceId        String
+  folderId       String?
+  title          String
+  rawMarkdown    String         @db.Text
+  plainText      String         @db.Text
+  summary        String?        @db.Text
+  status         String         @default("draft")
+  sourceType     String         @default("manual")
+  wordCount      Int            @default(0)
+  lastIndexedAt  DateTime?
+  deletedAt      DateTime?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  space          KnowledgeSpace @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  folder         Folder?        @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  noteTags       NoteTag[]
+  outgoingLinks  NoteLink[]     @relation("OutgoingNoteLinks")
+  incomingLinks  NoteLink[]     @relation("IncomingNoteLinks")
+  chunks         DocumentChunk[]
+}
+
+model Tag {
+  id        String          @id @default(cuid())
+  spaceId   String
+  name      String
+  color     String          @default("slate")
+  createdAt DateTime        @default(now())
+  space     KnowledgeSpace  @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  noteTags  NoteTag[]
+
+  @@unique([spaceId, name])
+}
+
+model NoteTag {
+  id     String @id @default(cuid())
+  noteId String
+  tagId  String
+  note   Note   @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  tag    Tag    @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@unique([noteId, tagId])
+}
+
+model NoteLink {
+  id         String   @id @default(cuid())
+  fromNoteId String
+  toNoteId   String
+  linkText   String
+  createdAt  DateTime @default(now())
+  fromNote   Note     @relation("OutgoingNoteLinks", fields: [fromNoteId], references: [id], onDelete: Cascade)
+  toNote     Note     @relation("IncomingNoteLinks", fields: [toNoteId], references: [id], onDelete: Cascade)
+}
+
+model DocumentChunk {
+  id           String      @id @default(cuid())
+  noteId       String
+  spaceId      String
+  chunkIndex   Int
+  content      String      @db.Text
+  tokenCount   Int         @default(0)
+  headingPath  String?
+  chunkVersion Int         @default(1)
+  createdAt    DateTime    @default(now())
+  note         Note        @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  embedding    Embedding?
+
+  @@unique([noteId, chunkIndex, chunkVersion])
+}
+
+model Embedding {
+  id               String        @id @default(cuid())
+  chunkId          String        @unique
+  modelName        String
+  modelVersion     String
+  vector           Unsupported("vector")
+  embeddingVersion Int           @default(1)
+  status           String        @default("ready")
+  createdAt        DateTime      @default(now())
+  chunk            DocumentChunk @relation(fields: [chunkId], references: [id], onDelete: Cascade)
+}
+
+model IngestionJob {
+  id           String         @id @default(cuid())
+  spaceId      String
+  noteId       String?
+  jobType      String
+  status       String         @default("pending")
+  payload      Json?
+  result       Json?
+  errorMessage String?
+  createdAt    DateTime       @default(now())
+  finishedAt   DateTime?
+  space        KnowledgeSpace @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+}

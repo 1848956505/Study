@@ -1,0 +1,69 @@
+import assert from 'node:assert/strict';
+
+export const noteDtoTests = [
+  {
+    name: 'buildCreateNoteDto trims title and preserves ids',
+    async run() {
+      const { buildCreateNoteDto } = await import('../src/modules/knowledge/application/dto/note.dto.js');
+
+      const dto = buildCreateNoteDto({
+        id: 'dto-note-1',
+        title: '  DTO title  ',
+        rawMarkdown: 'markdown',
+        spaceId: 'space-1',
+        folderId: 'folder-1'
+      });
+
+      assert.equal(dto.id, 'dto-note-1');
+      assert.equal(dto.title, 'DTO title');
+      assert.equal(dto.spaceId, 'space-1');
+      assert.equal(dto.folderId, 'folder-1');
+    }
+  },
+  {
+    name: 'buildCreateNoteDto derives id and title when omitted',
+    async run() {
+      const { buildCreateNoteDto } = await import('../src/modules/knowledge/application/dto/note.dto.js');
+
+      const dto = buildCreateNoteDto({
+        rawMarkdown: '# Imported Redis Notes\n\nqueue jobs',
+        spaceId: 'space-1'
+      });
+
+      assert.match(dto.id, /^note-imported-redis-notes-/);
+      assert.equal(dto.title, 'Imported Redis Notes');
+      assert.equal(dto.favorite, false);
+    }
+  },
+  {
+    name: 'buildUpdateNoteDto keeps only defined fields',
+    async run() {
+      const { buildUpdateNoteDto } = await import('../src/modules/knowledge/application/dto/note.dto.js');
+
+      const dto = buildUpdateNoteDto({
+        title: '  Updated title ',
+        rawMarkdown: undefined,
+        folderId: 'folder-9'
+      });
+
+      assert.deepEqual(dto, {
+        title: 'Updated title',
+        folderId: 'folder-9'
+      });
+    }
+  },
+  {
+    name: 'buildUpdateNoteDto keeps favorite when explicitly provided',
+    async run() {
+      const { buildUpdateNoteDto } = await import('../src/modules/knowledge/application/dto/note.dto.js');
+
+      const dto = buildUpdateNoteDto({
+        favorite: true
+      });
+
+      assert.deepEqual(dto, {
+        favorite: true
+      });
+    }
+  }
+];

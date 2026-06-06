@@ -1,0 +1,74 @@
+import assert from 'node:assert/strict';
+import {
+  createInitialWorkspaceScript,
+  createBackendSnapshot,
+  selectInitialWorkspaceSource,
+  selectLoadRecovery
+} from '../lib/workspace-loading.js';
+
+function runTest(name, callback) {
+  try {
+    callback();
+    console.log(`ok - ${name}`);
+  } catch (error) {
+    console.error(`not ok - ${name}`);
+    throw error;
+  }
+}
+
+runTest('selectLoadRecovery prefers backend when backend is available', () => {
+  assert.equal(selectLoadRecovery({ backendAvailable: true, cachedSnapshot: null }), 'backend');
+});
+
+runTest('selectLoadRecovery prefers cache over mock when backend is unavailable', () => {
+  assert.equal(
+    selectLoadRecovery({ backendAvailable: false, cachedSnapshot: { currentSpaceId: 'space-1' } }),
+    'cache'
+  );
+});
+
+runTest('selectLoadRecovery falls back to mock only when nothing else exists', () => {
+  assert.equal(selectLoadRecovery({ backendAvailable: false, cachedSnapshot: null }), 'mock');
+});
+
+runTest('selectInitialWorkspaceSource uses cached backend data during initial refresh', () => {
+  assert.equal(
+    selectInitialWorkspaceSource({ cachedSnapshot: { currentSpaceId: 'space-1', folderTree: [] } }),
+    'cache'
+  );
+});
+
+runTest('selectInitialWorkspaceSource keeps loading state when no cache exists', () => {
+  assert.equal(selectInitialWorkspaceSource({ cachedSnapshot: null }), 'loading');
+});
+
+runTest('createBackendSnapshot keeps the backend tree payload needed for recovery', () => {
+  const snapshot = createBackendSnapshot({
+    spaces: [{ id: 'space-1' }],
+    currentSpaceId: 'space-1',
+    folderTree: [{ id: 'folder-1', children: [] }],
+    tags: [{ id: 'tag-1' }],
+    allNotes: [{ id: 'note-1' }],
+    openFolders: { 'folder-1': true },
+    selectedFolderId: 'folder-1',
+    selectedNoteId: 'note-1'
+  });
+
+  assert.equal(snapshot.currentSpaceId, 'space-1');
+  assert.equal(snapshot.folderTree[0].id, 'folder-1');
+  assert.equal(snapshot.allNotes[0].id, 'note-1');
+});
+
+runTest('createInitialWorkspaceScript safely embeds a backend snapshot', () => {
+  const script = createInitialWorkspaceScript({
+    currentSpaceId: 'space-1',
+    folderTree: [{ id: 'folder-1', name: '</script><div>', children: [] }],
+    allNotes: [],
+    tags: [],
+    spaces: []
+  });
+
+  assert.match(script, /window\.__STUDY_INITIAL_WORKSPACE__/);
+  assert.doesNotMatch(script, /<\/script><div>/i);
+  assert.match(script, /\\u003c\/script>/i);
+});

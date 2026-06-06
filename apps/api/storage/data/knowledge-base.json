@@ -1,0 +1,109 @@
+{
+  "spaces": [
+    {
+      "id": "space-demo",
+      "userId": "demo",
+      "name": "Default Space",
+      "description": "Primary knowledge space"
+    }
+  ],
+  "folders": [
+    {
+      "id": "folder-test-1780743955788",
+      "spaceId": "space-demo",
+      "name": "test",
+      "parentId": null,
+      "pathCache": "/test"
+    },
+    {
+      "id": "folder-test2-1780744665673",
+      "spaceId": "space-demo",
+      "name": "test2",
+      "parentId": null,
+      "pathCache": "/test2"
+    }
+  ],
+  "tags": [
+    {
+      "id": "tag-runtime-2",
+      "spaceId": "space-demo",
+      "name": "runtime",
+      "color": "emerald"
+    }
+  ],
+  "notes": [
+    {
+      "id": "runtime-note-b",
+      "spaceId": "space-runtime",
+      "folderId": "folder-runtime",
+      "title": "Beta",
+      "rawMarkdown": "beta content",
+      "plainText": "beta content",
+      "status": "draft",
+      "sourceType": "manual",
+      "deleted": false,
+      "tagIds": []
+    },
+    {
+      "id": "runtime-note-a",
+      "spaceId": "space-runtime",
+      "folderId": "folder-runtime",
+      "title": "Alpha",
+      "rawMarkdown": "alpha content",
+      "plainText": "alpha content",
+      "status": "draft",
+      "sourceType": "manual",
+      "deleted": false,
+      "tagIds": []
+    },
+    {
+      "id": "note-1-1780739691741",
+      "spaceId": "space-demo",
+      "folderId": null,
+      "title": "1",
+      "rawMarkdown": "# 1\n\n",
+      "plainText": "1",
+      "internalLinks": [],
+      "status": "draft",
+      "sourceType": "manual",
+      "favorite": false,
+      "deleted": true,
+      "tagIds": [],
+      "createdAt": "2026-06-06T09:54:51.742Z",
+      "updatedAt": "2026-06-06T11:04:15.455Z"
+    },
+    {
+      "id": "note-item-1780743862799",
+      "spaceId": "space-demo",
+      "folderId": null,
+      "title": "你好",
+      "rawMarkdown": "# 你好\n\n",
+      "plainText": "你好",
+      "internalLinks": [],
+      "status": "draft",
+      "sourceType": "manual",
+      "favorite": false,
+      "deleted": true,
+      "tagIds": [],
+      "createdAt": "2026-06-06T11:04:22.799Z",
+      "updatedAt": "2026-06-06T11:04:25.790Z"
+    },
+    {
+      "id": "note-test-1780743959371",
+      "spaceId": "space-demo",
+      "folderId": "folder-test-1780743955788",
+      "title": "test",
+      "rawMarkdown": "# test\n\n",
+      "plainText": "test",
+      "internalLinks": [],
+      "status": "draft",
+      "sourceType": "manual",
+      "favorite": false,
+      "deleted": false,
+      "tagIds": [],
+      "createdAt": "2026-06-06T11:05:59.371Z",
+      "updatedAt": "2026-06-06T11:17:30.030Z"
+    }
+  ],
+  "attachments": []
+}

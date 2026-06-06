@@ -1,0 +1,162 @@
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function renderInlineMarkdown(text) {
+  let html = escapeHtml(text);
+  html = html.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1" />');
+  html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+  html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  html = html.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer">$1</a>');
+  return html;
+}
+
+function slugifyHeading(text, fallbackIndex) {
+  const slug = String(text ?? '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\u4e00-\u9fa5]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+
+  return slug || `section-${fallbackIndex}`;
+}
+
+export function extractMarkdownHeadings(markdown) {
+  const source = String(markdown ?? '').replace(/\r\n/g, '\n');
+  const headings = [];
+
+  source.split('\n').forEach((line) => {
+    const headingMatch = line.match(/^(#{1,3})\s+(.+)$/);
+    if (!headingMatch) {
+      return;
+    }
+
+    const title = headingMatch[2].trim();
+    headings.push({
+      level: headingMatch[1].length,
+      title,
+      id: slugifyHeading(title, headings.length + 1)
+    });
+  });
+
+  return headings;
+}
+
+export function renderMarkdownPreview(markdown) {
+  const source = String(markdown ?? '').replace(/\r\n/g, '\n').trim();
+
+  if (!source) {
+    return '<p class="preview-empty">Nothing to preview yet.</p>';
+  }
+
+  const blocks = source.split(/\n\s*\n/);
+  const headings = extractMarkdownHeadings(source);
+  let headingIndex = 0;
+
+  return blocks
+    .map((block) => {
+      const lines = block.split('\n');
+
+      if (lines.every((line) => /^\s*>\s?/.test(line))) {
+        const content = lines.map((line) => line.replace(/^\s*>\s?/, '')).join(' ');
+        return `<blockquote>${renderInlineMarkdown(content)}</blockquote>`;
+      }
+
+      if (lines.every((line) => /^\s*[-*]\s+/.test(line))) {
+        const items = lines.map((line) => line.replace(/^\s*[-*]\s+/, '').trim());
+        return `<ul>${items.map((item) => `<li>${renderInlineMarkdown(item)}</li>`).join('')}</ul>`;
+      }
+
+      if (lines.every((line) => /^\s*\d+\.\s+/.test(line))) {
+        const items = lines.map((line) => line.replace(/^\s*\d+\.\s+/, '').trim());
+        return `<ol>${items.map((item) => `<li>${renderInlineMarkdown(item)}</li>`).join('')}</ol>`;
+      }
+
+      if (lines[0].startsWith('```') && lines[lines.length - 1].startsWith('```')) {
+        const code = lines.slice(1, -1).join('\n');
+        return `<pre><code>${escapeHtml(code)}</code></pre>`;
+      }
+
+      const headingMatch = lines[0].match(/^(#{1,3})\s+(.+)$/);
+      if (headingMatch) {
+        const level = headingMatch[1].length;
+        const content = renderInlineMarkdown(headingMatch[2]);
+        const heading = headings[headingIndex];
+        headingIndex += 1;
+        const rest = lines.slice(1).join(' ').trim();
+        const paragraph = rest ? `<p>${renderInlineMarkdown(rest)}</p>` : '';
+        return `<h${level} id="${heading?.id ?? `section-${headingIndex}`}">${content}</h${level}>${paragraph}`;
+      }
+
+      return `<p>${renderInlineMarkdown(lines.join('<br />'))}</p>`;
+    })
+    .join('');
+}
+
+export function applyMarkdownFormat(text, selectionStart, selectionEnd, format) {
+  const before = text.slice(0, selectionStart);
+  const selected = text.slice(selectionStart, selectionEnd);
+  const after = text.slice(selectionEnd);
+
+  const wrap = (prefix, suffix = prefix) => ({
+    nextValue: `${before}${prefix}${selected || '文本'}${suffix}${after}`,
+    nextSelectionStart: before.length + prefix.length,
+    nextSelectionEnd: before.length + prefix.length + (selected || '文本').length
+  });
+
+  switch (format) {
+    case 'heading-1':
+      return {
+        nextValue: `${before}# ${selected || '标题'}${after}`,
+        nextSelectionStart: before.length + 2,
+        nextSelectionEnd: before.length + 2 + (selected || '标题').length
+      };
+    case 'heading-2':
+      return {
+        nextValue: `${before}## ${selected || '标题'}${after}`,
+        nextSelectionStart: before.length + 3,
+        nextSelectionEnd: before.length + 3 + (selected || '标题').length
+      };
+    case 'bold':
+      return wrap('**');
+    case 'italic':
+      return wrap('*');
+    case 'quote':
+      return {
+        nextValue: `${before}> ${selected || '引用内容'}${after}`,
+        nextSelectionStart: before.length + 2,
+        nextSelectionEnd: before.length + 2 + (selected || '引用内容').length
+      };
+    case 'code':
+      return wrap('`');
+    case 'bullet':
+      return {
+        nextValue: `${before}- ${selected || '列表项'}${after}`,
+        nextSelectionStart: before.length + 2,
+        nextSelectionEnd: before.length + 2 + (selected || '列表项').length
+      };
+    case 'link':
+      return {
+        nextValue: `${before}[${selected || '链接文本'}](https://example.com)${after}`,
+        nextSelectionStart: before.length + 1,
+        nextSelectionEnd: before.length + 1 + (selected || '链接文本').length
+      };
+    case 'codeblock':
+      return {
+        nextValue: `${before}\`\`\`\n${selected || '代码块内容'}\n\`\`\`${after}`,
+        nextSelectionStart: before.length + 4,
+        nextSelectionEnd: before.length + 4 + (selected || '代码块内容').length
+      };
+    default:
+      return {
+        nextValue: text,
+        nextSelectionStart: selectionStart,
+        nextSelectionEnd: selectionEnd
+      };
+  }
+}
