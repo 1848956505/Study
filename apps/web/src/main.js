@@ -51,8 +51,8 @@ function renderHtml(initialWorkspaceScript = '') {
           </button>
         </header>
         <main class="workspace-stage">
-          <div class="kb-workspace">
-            <aside class="kb-sidebar">
+          <div class="kb-workspace" id="kb-workspace" data-left-hidden="false" data-right-hidden="false" data-view-mode="edit">
+            <aside class="kb-sidebar" id="kb-sidebar">
               <section class="section-card">
                 <div class="library-header">
                   <span class="library-header-leading">
@@ -76,6 +76,7 @@ function renderHtml(initialWorkspaceScript = '') {
             </aside>
             <section class="kb-editor">
               <div class="note-tabs" id="note-tabs"></div>
+              <div class="editor-menu-bar" id="editor-menu-bar"></div>
               <section class="editor-shell">
                 <div class="editor-content" id="editor-content" data-source-open="false">
                   <section class="preview-pane preview-frame">
@@ -86,7 +87,7 @@ function renderHtml(initialWorkspaceScript = '') {
                 </div>
               </section>
             </section>
-            <aside class="kb-aside">
+            <aside class="kb-aside" id="kb-aside">
               <section class="section-card">
                 <div class="info-grid" id="note-info"></div>
               </section>

@@ -1,0 +1,44 @@
+import assert from 'node:assert/strict';
+import {
+  resolveEditorPanelKeyboardAction,
+  resolveMatchNavigationIndex
+} from '../lib/editor/find-navigation.js';
+
+assert.equal(
+  resolveMatchNavigationIndex({ currentIndex: -1, matchCount: 3, direction: 'next' }),
+  0,
+  'a fresh forward search should land on the first match'
+);
+assert.equal(
+  resolveMatchNavigationIndex({ currentIndex: 1, matchCount: 3, direction: 'next' }),
+  2,
+  'forward search should advance to the next match'
+);
+assert.equal(
+  resolveMatchNavigationIndex({ currentIndex: 0, matchCount: 3, direction: 'previous' }),
+  2,
+  'backward search should wrap to the last match'
+);
+assert.equal(
+  resolveMatchNavigationIndex({ currentIndex: 2, matchCount: 3, direction: 'previous' }),
+  1,
+  'backward search should move to the previous match'
+);
+
+assert.equal(
+  resolveEditorPanelKeyboardAction({ key: 'Enter', shiftKey: false, altKey: false, ctrlKey: false, metaKey: false }),
+  'next',
+  'plain Enter should find the next match'
+);
+assert.equal(
+  resolveEditorPanelKeyboardAction({ key: 'Enter', shiftKey: true, altKey: false, ctrlKey: false, metaKey: false }),
+  'previous',
+  'Shift+Enter should find the previous match'
+);
+assert.equal(
+  resolveEditorPanelKeyboardAction({ key: 'Enter', shiftKey: false, altKey: false, ctrlKey: true, metaKey: false }),
+  null,
+  'modified Enter shortcuts should be ignored'
+);
+
+console.log('ok - editor find behavior resolves navigation direction correctly');

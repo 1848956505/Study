@@ -1,10 +1,14 @@
 ﻿import '@milkdown/prose/view/style/prosemirror.css';
 
-import { Editor, defaultValueCtx, editorViewCtx, rootCtx, schemaCtx } from '@milkdown/core';
+import { Editor, defaultValueCtx, editorViewCtx, parserCtx, rootCtx, schemaCtx } from '@milkdown/core';
+import { clipboard } from '@milkdown/plugin-clipboard';
+import { history, redoCommand, undoCommand } from '@milkdown/plugin-history';
 import { listener, listenerCtx } from '@milkdown/plugin-listener';
 import { getNodeFromSchema } from '@milkdown/prose';
 import { liftEmptyBlock, splitBlock } from '@milkdown/prose/commands';
+import { Slice } from '@milkdown/prose/model';
 import { Plugin, PluginKey, TextSelection } from '@milkdown/prose/state';
+import { Decoration, DecorationSet } from '@milkdown/prose/view';
 import {
   commonmark,
   createCodeBlockCommand,
@@ -17,11 +21,47 @@ import {
   wrapInOrderedListCommand,
   insertHrCommand
 } from '@milkdown/preset-commonmark';
-import { gfm } from '@milkdown/preset-gfm';
+import { gfm, toggleStrikethroughCommand, insertTableCommand } from '@milkdown/preset-gfm';
 import { $command, $prose, callCommand, getMarkdown, replaceAll } from '@milkdown/utils';
 import { resolveEnterBehavior, shouldKeepTrailingBlank } from './enter-behavior.js';
+import { resolveMatchNavigationIndex } from './find-navigation.js';
+import { removeSpuriousEmptyCodeBlocks, shouldPreferPlainMarkdown } from './markdown-paste.js';
 
+const insertLinkCommand = $command('InsertLink', (ctx) => () => (state, dispatch) => {
+  const { selection } = state;
+  const { $from, $to, empty } = selection;
 
+  const linkText = empty ? 'link' : state.doc.textBetween($from.pos, $to.pos);
+  const markdown = `[${linkText}](https://)`;
+
+  const tr = empty
+    ? state.tr.insertText(markdown, $from.pos)
+    : state.tr.replaceWith($from.pos, $to.pos, state.schema.text(markdown));
+
+  const urlStart = empty ? $from.pos + linkText.length + 3 : $from.pos + linkText.length + 3;
+  const urlEnd = urlStart + 7;
+  tr.setSelection(TextSelection.create(tr.doc, urlStart, urlEnd));
+  dispatch(tr.scrollIntoView());
+  return true;
+});
+
+const insertImageCommand = $command('InsertImage', (ctx) => () => (state, dispatch) => {
+  const { selection } = state;
+  const { $from, $to, empty } = selection;
+
+  const altText = empty ? 'image' : state.doc.textBetween($from.pos, $to.pos);
+  const markdown = `![${altText}](https://)`;
+
+  const tr = empty
+    ? state.tr.insertText(markdown, $from.pos)
+    : state.tr.replaceWith($from.pos, $to.pos, state.schema.text(markdown));
+
+  const urlStart = empty ? $from.pos + altText.length + 4 : $from.pos + altText.length + 4;
+  const urlEnd = urlStart + 7;
+  tr.setSelection(TextSelection.create(tr.doc, urlStart, urlEnd));
+  dispatch(tr.scrollIntoView());
+  return true;
+});
 const turnIntoTaskListCommand = $command('TurnIntoTaskList', (ctx) => () => (state, dispatch) => {
   const schema = ctx.get(schemaCtx);
   const paragraphNodeType = getNodeFromSchema('paragraph', schema);
@@ -52,6 +92,8 @@ const commandResolvers = {
   'heading-2': () => ({ key: wrapInHeadingCommand.key, payload: 2 }),
   'heading-3': () => ({ key: wrapInHeadingCommand.key, payload: 3 }),
   'heading-4': () => ({ key: wrapInHeadingCommand.key, payload: 4 }),
+  'heading-5': () => ({ key: wrapInHeadingCommand.key, payload: 5 }),
+  'heading-6': () => ({ key: wrapInHeadingCommand.key, payload: 6 }),
   bold: () => ({ key: toggleStrongCommand.key }),
   italic: () => ({ key: toggleEmphasisCommand.key }),
   quote: () => ({ key: wrapInBlockquoteCommand.key }),
@@ -60,12 +102,90 @@ const commandResolvers = {
   code: () => ({ key: toggleInlineCodeCommand.key }),
   codeblock: () => ({ key: createCodeBlockCommand.key, payload: '' }),
   hr: () => ({ key: insertHrCommand.key }),
-  'task-list': () => ({ key: turnIntoTaskListCommand.key })
+  'task-list': () => ({ key: turnIntoTaskListCommand.key }),
+  strikethrough: () => ({ key: toggleStrikethroughCommand.key }),
+  link: () => ({ key: insertLinkCommand.key }),
+  image: () => ({ key: insertImageCommand.key }),
+  table: () => ({ key: insertTableCommand.key, payload: { row: 3, col: 3 } }),
+  undo: () => ({ key: undoCommand.key }),
+  redo: () => ({ key: redoCommand.key })
 };
+const findHighlightPluginKey = new PluginKey('STUDY_FIND_HIGHLIGHTS');
 
 function normalizeMarkdown(markdown) {
   return typeof markdown === 'string' ? markdown : '';
 }
+
+function parseMarkdownSlice(ctx, markdown) {
+  const text = normalizeMarkdown(markdown);
+  if (!text) {
+    return null;
+  }
+
+  const parser = ctx.get(parserCtx);
+  const parsed = parser(text);
+  if (!parsed || typeof parsed === 'string') {
+    return null;
+  }
+
+  let content = parsed.content;
+  while (content.size > 0) {
+    const first = content.firstChild;
+    if (first && first.type.name === 'paragraph' && first.textContent.trim() === '') {
+      content = content.cut(first.nodeSize);
+    } else {
+      break;
+    }
+  }
+  while (content.size > 0) {
+    const last = content.lastChild;
+    if (last && last.type.name === 'paragraph' && last.textContent.trim() === '') {
+      content = content.cut(0, content.size - last.nodeSize);
+    } else {
+      break;
+    }
+  }
+
+  return new Slice(content, 0, 0);
+}
+
+const markdownPasteBehavior = $prose((ctx) => new Plugin({
+  key: new PluginKey('STUDY_MARKDOWN_PASTE_BEHAVIOR'),
+  props: {
+    handlePaste(view, event, preProcessedSlice) {
+      const clipboardData = event.clipboardData;
+      if (!clipboardData || view.state.selection.$from.parent.type.spec.code) {
+        return false;
+      }
+
+      const html = clipboardData.getData('text/html');
+      if (html) {
+        const cleanedSlice = removeSpuriousEmptyCodeBlocks(preProcessedSlice);
+        if (cleanedSlice !== preProcessedSlice) {
+          event.preventDefault();
+          view.dispatch(view.state.tr.replaceSelection(cleanedSlice).scrollIntoView());
+          return true;
+        }
+        return false;
+      }
+
+      const text = clipboardData.getData('text/plain');
+      const vscodeData = clipboardData.getData('vscode-editor-data');
+      if (!shouldPreferPlainMarkdown({ text, vscodeData })) {
+        return false;
+      }
+
+      const slice = parseMarkdownSlice(ctx, text);
+      if (!slice) {
+        return false;
+      }
+
+      event.preventDefault();
+      view.dispatch(view.state.tr.replaceSelection(slice).scrollIntoView());
+      return true;
+    }
+  }
+}));
 
 function getLastTextblockInfo(doc) {
   let lastBlock = null;
@@ -222,6 +342,37 @@ const enhancedEnterBehavior = $prose((ctx) => {
   });
 });
 
+const findHighlightBehavior = $prose(() => new Plugin({
+  key: findHighlightPluginKey,
+  state: {
+    init: () => ({
+      query: '',
+      activeIndex: -1,
+      decorations: DecorationSet.empty
+    }),
+    apply(transaction, pluginState) {
+      const meta = transaction.getMeta(findHighlightPluginKey);
+      const query = typeof meta?.query === 'string' ? meta.query : pluginState.query;
+      const activeIndex = typeof meta?.activeIndex === 'number' ? meta.activeIndex : pluginState.activeIndex;
+
+      if (!meta && !transaction.docChanged) {
+        return pluginState;
+      }
+
+      return {
+        query,
+        activeIndex,
+        decorations: buildFindDecorations(transaction.doc, query, activeIndex)
+      };
+    }
+  },
+  props: {
+    decorations(state) {
+      return findHighlightPluginKey.getState(state)?.decorations ?? null;
+    }
+  }
+}));
+
 export class MilkdownHost {
   constructor({ root, markdown = '', onChange } = {}) {
     if (!(root instanceof HTMLElement)) {
@@ -247,8 +398,12 @@ export class MilkdownHost {
       })
       .use(commonmark)
       .use(listener)
+      .use(history)
+      .use(markdownPasteBehavior)
+      .use(clipboard)
       .use(gfm)
-      .use(enhancedEnterBehavior);
+      .use(enhancedEnterBehavior)
+      .use(findHighlightBehavior);
 
     await this.editor.create();
     this.root.dataset.editorReady = 'true';
@@ -282,6 +437,25 @@ export class MilkdownHost {
     view.focus();
   }
 
+  async pasteMarkdown(markdown) {
+    await this.ready;
+
+    const text = normalizeMarkdown(markdown);
+    if (!text) {
+      return false;
+    }
+
+    const view = this.editor.ctx.get(editorViewCtx);
+    const slice = parseMarkdownSlice(this.editor.ctx, text);
+    if (!slice) {
+      return false;
+    }
+
+    view.dispatch(view.state.tr.replaceSelection(slice).scrollIntoView());
+    view.focus();
+    return true;
+  }
+
   async selectTextRange({ startNode, startOffset, endNode, endOffset } = {}) {
     await this.ready;
 
@@ -305,23 +479,47 @@ export class MilkdownHost {
   }
 
   async findAndSelectNext(query, previousMatchIndex = -1) {
+    return this.findAndSelect(query, previousMatchIndex, 'next');
+  }
+
+  async findAndSelectPrevious(query, previousMatchIndex = -1) {
+    return this.findAndSelect(query, previousMatchIndex, 'previous');
+  }
+
+  async findAndSelect(query, previousMatchIndex = -1, direction = 'next') {
     await this.ready;
 
     const needle = typeof query === 'string' ? query.trim() : '';
     if (!needle) {
+      await this.clearSearchHighlights();
       return { found: false, count: 0, index: -1 };
     }
 
     const view = this.editor.ctx.get(editorViewCtx);
     const matches = collectDocumentTextMatches(view.state.doc, needle);
     if (!matches.length) {
+      view.dispatch(
+        view.state.tr
+          .setMeta(findHighlightPluginKey, { query: needle, activeIndex: -1 })
+          .setMeta('addToHistory', false)
+      );
       return { found: false, count: 0, index: -1 };
     }
 
-    const index = previousMatchIndex >= 0 ? (previousMatchIndex + 1) % matches.length : 0;
+    const index = resolveMatchNavigationIndex({
+      currentIndex: previousMatchIndex,
+      matchCount: matches.length,
+      direction
+    });
     const match = matches[index];
     const selection = TextSelection.create(view.state.doc, match.from, match.to);
-    view.dispatch(view.state.tr.setSelection(selection).scrollIntoView());
+    view.dispatch(
+      view.state.tr
+        .setSelection(selection)
+        .setMeta(findHighlightPluginKey, { query: needle, activeIndex: index })
+        .setMeta('addToHistory', false)
+        .scrollIntoView()
+    );
     view.focus();
 
     return {
@@ -329,6 +527,16 @@ export class MilkdownHost {
       count: matches.length,
       index
     };
+  }
+
+  async clearSearchHighlights() {
+    await this.ready;
+    const view = this.editor.ctx.get(editorViewCtx);
+    view.dispatch(
+      view.state.tr
+        .setMeta(findHighlightPluginKey, { query: '', activeIndex: -1 })
+        .setMeta('addToHistory', false)
+    );
   }
 
   async destroy() {
@@ -365,4 +573,25 @@ function collectDocumentTextMatches(doc, needle) {
   });
 
   return matches;
+}
+
+function buildFindDecorations(doc, query, activeIndex) {
+  const needle = typeof query === 'string' ? query.trim() : '';
+  if (!needle) {
+    return DecorationSet.empty;
+  }
+
+  const matches = collectDocumentTextMatches(doc, needle);
+  if (!matches.length) {
+    return DecorationSet.empty;
+  }
+
+  return DecorationSet.create(
+    doc,
+    matches.map((match, index) => Decoration.inline(match.from, match.to, {
+      class: index === activeIndex
+        ? 'editor-find-match editor-find-match-active'
+        : 'editor-find-match'
+    }))
+  );
 }

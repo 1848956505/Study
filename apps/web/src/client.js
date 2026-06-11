@@ -1,4 +1,4 @@
-﻿import { knowledgeBaseSeed } from '../lib/mock-knowledge-base.js';
+import { knowledgeBaseSeed } from '../lib/mock-knowledge-base.js';
 import { createMilkdownHost } from '../lib/editor/milkdown-bundle.js';
 import {
   buildNoteTabPath,
@@ -16,6 +16,8 @@ import {
   applyEditorPanelMatchResult,
   createOpenedEditorPanelState
 } from '../lib/editor/editor-panel-state.js';
+import { resolveEditorPanelKeyboardAction } from '../lib/editor/find-navigation.js';
+import { extractMarkdownHeadings, renderMarkdownPreview } from '../lib/markdown.js';
 import { validateSiblingName } from '../lib/tree-name-validation.js';
 import {
   createBackendSnapshot,
@@ -36,6 +38,10 @@ import {
   renameNote as renameLocalNoteEntry,
   resolveNoteVisualType
 } from '../lib/tree-workspace.js';
+import {
+  getEditorShortcutLabel,
+  resolveEditorShortcutAction
+} from '../lib/editor/shortcut-actions.js';
 
 const BACKEND_CACHE_KEY = 'study-accelerator.backend-workspace-cache';
 const AUTOSAVE_DELAY_MS = 700;
@@ -80,6 +86,12 @@ const state = {
   attachments: [],
   openNoteTabs: [],
   editorMenuOpen: null,
+  view: {
+    mode: 'edit',
+    showLeftSidebar: true,
+    showRightSidebar: true,
+    showSourceEditor: false
+  },
   editorPanel: {
     open: false,
     mode: null,
@@ -130,15 +142,11 @@ const railItems = [
 ];
 
 const formatButtons = [
-  { key: 'heading-1', label: 'H1' },
-  { key: 'heading-2', label: 'H2' },
-  { key: 'heading-3', label: 'H3' },
-  { key: 'bold', label: 'Bold' },
-  { key: 'italic', label: 'Italic' },
-  { key: 'quote', label: 'Quote' },
-  { key: 'bullet', label: 'List' },
-  { key: 'code', label: 'Code' },
-  { key: 'codeblock', label: 'Block' }
+  { key: 'bold', label: '加粗' },
+  { key: 'italic', label: '斜体' },
+  { key: 'quote', label: '引用' },
+  { key: 'bullet', label: '列表' },
+  { key: 'code', label: '行内代码' }
 ];
 
 const editMenuItems = [
@@ -156,10 +164,12 @@ const editMenuItems = [
 
 
 const paragraphMenuItems = [
-  { key: 'heading-1', label: '一级标题' },
-  { key: 'heading-2', label: '二级标题' },
-  { key: 'heading-3', label: '三级标题' },
-  { key: 'heading-4', label: '四级标题' },
+  { key: 'heading-1', label: 'H1' },
+  { key: 'heading-2', label: 'H2' },
+  { key: 'heading-3', label: 'H3' },
+  { key: 'heading-4', label: 'H4' },
+  { key: 'heading-5', label: 'H5' },
+  { key: 'heading-6', label: 'H6' },
   { key: 'separator' },
   { key: 'bullet', label: '无序列表' },
   { key: 'ordered', label: '有序列表' },
@@ -206,6 +216,8 @@ function initialize() {
 function cacheElements() {
   elements.globalSearch = document.getElementById('global-search');
   elements.moduleRail = document.getElementById('module-rail');
+  elements.workspace = document.getElementById('kb-workspace');
+  elements.sidebar = document.getElementById('kb-sidebar');
   elements.folderTree = document.getElementById('folder-tree');
   elements.secondaryNavToggle = document.getElementById('secondary-nav-toggle');
   elements.contextMenu = document.getElementById('library-context-menu');
@@ -214,6 +226,7 @@ function cacheElements() {
   elements.editorMenuBar = document.getElementById('editor-menu-bar');
   elements.noteTabMenu = document.getElementById('note-tab-menu');
   elements.editorContent = document.getElementById('editor-content');
+  elements.aside = document.getElementById('kb-aside');
   elements.noteInfo = document.getElementById('note-info');
   elements.tagCount = document.getElementById('tag-count');
   elements.noteTags = document.getElementById('note-tags');
@@ -589,6 +602,37 @@ function bindEvents() {
     if (paragraphMenuAction?.dataset.paragraphMenuAction) {
       void handleParagraphMenuAction(paragraphMenuAction.dataset.paragraphMenuAction);
     }
+
+    const formatMenuAction = event.target.closest('[data-format-menu-action]');
+    if (formatMenuAction?.dataset.formatMenuAction) {
+      void handleFormatMenuAction(formatMenuAction.dataset.formatMenuAction);
+      return;
+    }
+
+    const viewMenuAction = event.target.closest('[data-view-menu-action]');
+    if (viewMenuAction?.dataset.viewMenuAction) {
+      void handleViewMenuAction(viewMenuAction.dataset.viewMenuAction);
+    }
+  });
+
+  elements.editorContent?.addEventListener('input', (event) => {
+    const sourceInput = event.target.closest('[data-source-editor-input]');
+    if (!sourceInput) {
+      return;
+    }
+
+    state.draftMarkdown = sourceInput.value;
+    scheduleAutosave();
+    syncSourcePreview();
+  });
+
+  elements.editorContent?.addEventListener('click', (event) => {
+    const sourceSaveButton = event.target.closest('[data-source-save]');
+    if (!sourceSaveButton) {
+      return;
+    }
+
+    void persistDraft({ immediate: true });
   });
 
   document.addEventListener('input', (event) => {
@@ -606,16 +650,36 @@ function bindEvents() {
       state.editorPanel.query = target.value;
       state.editorPanel.matchIndex = -1;
       state.editorPanel.matchCount = 0;
+      void currentEditorHost?.clearSearchHighlights();
     } else if (target.dataset.panelField === 'replacement') {
       state.editorPanel.replacement = target.value;
     }
   });
 
   document.addEventListener('keydown', (event) => {
+    const panel = event.target.closest?.('#editor-utility-panel');
+    if (panel && state.editorPanel.open && state.editorPanel.mode === 'find') {
+      const action = resolveEditorPanelKeyboardAction(event);
+      if (action) {
+        event.preventDefault();
+        event.stopPropagation();
+        void handleEditorPanelAction(action === 'previous' ? 'submit-previous' : 'submit');
+        return;
+      }
+    }
+
+    const shortcutAction = resolveEditorShortcutAction(event);
+    if (shortcutAction && shouldHandleEditorShortcut(event)) {
+      event.preventDefault();
+      event.stopPropagation();
+      void handleResolvedEditorShortcut(shortcutAction);
+      return;
+    }
+
     if (event.key === 'Escape') {
       closeEditorPanel();
     }
-  });
+  }, true);
 
   document.addEventListener('click', (event) => {
     const panelAction = event.target.closest('[data-editor-panel-action]');
@@ -963,12 +1027,41 @@ function renderRailIcon(key) {
 }
 
 function renderAll() {
+  renderWorkspaceViewState();
   renderFolders();
   renderTabs();
   renderEditorMenuBar();
   renderEditor(getCurrentNote());
   renderSidebar(getCurrentNote());
   renderStatus();
+}
+
+function getEffectiveViewState() {
+  return {
+    mode: state.view.mode,
+    showLeftSidebar: state.view.mode === 'focus' ? false : state.view.showLeftSidebar,
+    showRightSidebar: state.view.mode === 'focus' ? false : state.view.showRightSidebar,
+    showSourceEditor: state.view.showSourceEditor
+  };
+}
+
+function renderWorkspaceViewState() {
+  if (!elements.workspace) {
+    return;
+  }
+
+  const effectiveView = getEffectiveViewState();
+  elements.workspace.dataset.leftHidden = String(!effectiveView.showLeftSidebar);
+  elements.workspace.dataset.rightHidden = String(!effectiveView.showRightSidebar);
+  elements.workspace.dataset.viewMode = effectiveView.mode;
+
+  if (elements.sidebar) {
+    elements.sidebar.hidden = !effectiveView.showLeftSidebar;
+  }
+
+  if (elements.aside) {
+    elements.aside.hidden = !effectiveView.showRightSidebar;
+  }
 }
 
 function renderFolders() {
@@ -1123,9 +1216,12 @@ function renderEditorMenuBar() {
   }
 
   const note = getCurrentNote();
+  const effectiveView = getEffectiveViewState();
   const fileMenuOpen = state.editorMenuOpen === 'file';
   const paragraphMenuOpen = state.editorMenuOpen === 'paragraph';
   const editMenuOpen = state.editorMenuOpen === 'edit';
+  const formatMenuOpen = state.editorMenuOpen === 'format';
+  const viewMenuOpen = state.editorMenuOpen === 'view';
 
   elements.editorMenuBar.innerHTML = `
     <div class="editor-menu-shell">
@@ -1162,6 +1258,28 @@ function renderEditorMenuBar() {
         </button>
         ${editMenuOpen ? renderEditMenu(note) : ''}
       </div>
+      <div class="editor-menu-group">
+        <button
+          type="button"
+          class="editor-menu-text"
+          data-editor-menu-toggle="format"
+          data-open="${formatMenuOpen}"
+        >
+          格式
+        </button>
+        ${formatMenuOpen ? renderFormatMenu(note) : ''}
+      </div>
+      <div class="editor-menu-group">
+        <button
+          type="button"
+          class="editor-menu-text"
+          data-editor-menu-toggle="view"
+          data-open="${viewMenuOpen}"
+        >
+          视图
+        </button>
+        ${viewMenuOpen ? renderViewMenu(note, effectiveView) : ''}
+      </div>
     </div>
   `;
 }
@@ -1177,7 +1295,12 @@ function renderEditMenu(note) {
             return '<div class="editor-menu-divider" aria-hidden="true"></div>';
           }
 
-          return `<button type="button" class="editor-menu-item" data-edit-menu-action="${item.key}" ${hasNote ? '' : 'disabled'}>${item.label}</button>`;
+          return renderEditorMenuItem({
+            actionAttr: 'data-edit-menu-action',
+            actionKey: item.key,
+            disabled: !hasNote,
+            label: item.label
+          });
         })
         .join('')}
     </div>
@@ -1196,9 +1319,62 @@ function renderParagraphMenu(note) {
             return '<div class="editor-menu-divider" aria-hidden="true"></div>';
           }
 
-          return `<button type="button" class="editor-menu-item" data-paragraph-menu-action="${item.key}" ${hasNote ? '' : 'disabled'}>${item.label}</button>`;
+          return renderEditorMenuItem({
+            actionAttr: 'data-paragraph-menu-action',
+            actionKey: item.key,
+            disabled: !hasNote,
+            label: item.label
+          });
         })
         .join('')}
+    </div>
+  `;
+}
+
+function renderFormatMenu(note) {
+  const hasNote = Boolean(note);
+
+  return `
+    <div class="editor-menu-popover" data-editor-menu="format">
+      ${formatButtons
+        .map((item) => renderEditorMenuItem({
+          actionAttr: 'data-format-menu-action',
+          actionKey: item.key,
+          disabled: !hasNote,
+          label: item.label
+        }))
+        .join('')}
+    </div>
+  `;
+}
+
+function renderEditorMenuItem({
+  actionAttr,
+  actionKey,
+  disabled = false,
+  label
+}) {
+  const shortcut = getEditorShortcutLabel(actionKey);
+  return `
+    <button type="button" class="editor-menu-item" ${actionAttr}="${actionKey}" ${disabled ? 'disabled' : ''}>
+      <span class="editor-menu-item-label">${escapeHtml(label)}</span>
+      ${shortcut ? `<span class="editor-menu-shortcut">${escapeHtml(shortcut)}</span>` : ''}
+    </button>
+  `;
+}
+
+function renderViewMenu(note, effectiveView) {
+  const hasNote = Boolean(note);
+
+  return `
+    <div class="editor-menu-popover" data-editor-menu="view">
+      <button type="button" class="editor-menu-item" data-view-menu-action="mode-read" data-active="${effectiveView.mode === 'read'}">阅读模式</button>
+      <button type="button" class="editor-menu-item" data-view-menu-action="mode-edit" data-active="${effectiveView.mode === 'edit'}">编辑模式</button>
+      <button type="button" class="editor-menu-item" data-view-menu-action="mode-focus" data-active="${effectiveView.mode === 'focus'}">专注模式</button>
+      <div class="editor-menu-divider" aria-hidden="true"></div>
+      <button type="button" class="editor-menu-item" data-view-menu-action="toggle-left-sidebar" data-active="${effectiveView.showLeftSidebar}">${effectiveView.showLeftSidebar ? '隐藏左侧目录区' : '显示左侧目录区'}</button>
+      <button type="button" class="editor-menu-item" data-view-menu-action="toggle-right-sidebar" data-active="${effectiveView.showRightSidebar}">${effectiveView.showRightSidebar ? '隐藏右侧辅助区' : '显示右侧辅助区'}</button>
+      <button type="button" class="editor-menu-item" data-view-menu-action="toggle-source-editor" data-active="${effectiveView.showSourceEditor}" ${hasNote ? '' : 'disabled'}>${effectiveView.showSourceEditor ? '隐藏源码编辑器' : '显示源码编辑器'}</button>
     </div>
   `;
 }
@@ -1608,14 +1784,65 @@ function renderNoteIcon(iconKind = 'markdown') {
   `;
 }
 
+function renderPreviewPane(markdown) {
+  const headings = extractMarkdownHeadings(markdown);
+  const previewHtml = renderMarkdownPreview(markdown);
+
+  return `
+    <section class="preview-pane preview-frame">
+      <div class="pane-body">
+        ${headings.length ? `
+          <div class="toc-list" data-preview-toc>
+            ${headings.map((heading) => `<a class="toc-item" data-level="${heading.level}" href="#${escapeAttribute(heading.id)}">${escapeHtml(heading.title)}</a>`).join('')}
+          </div>
+        ` : ''}
+        <article class="preview-rendered" data-preview-content>${previewHtml}</article>
+      </div>
+    </section>
+  `;
+}
+
+function renderSourceEditorPane() {
+  return `
+    <section class="editor-pane">
+      <div class="pane-body pane-body-editor">
+        <div class="source-toolbar">
+          <span class="editor-save-indicator" id="editor-save-indicator"></span>
+          <button type="button" class="subtle-button editor-save-button" data-source-save>保存源码</button>
+        </div>
+        <textarea class="markdown-input" data-source-editor-input spellcheck="false" aria-label="Markdown 源码编辑器">${escapeHtml(state.draftMarkdown)}</textarea>
+      </div>
+    </section>
+  `;
+}
+
+function renderSourceEditorView() {
+  return `
+    <section class="editor-pane">
+      <div class="pane-body pane-body-editor">
+        <div class="source-toolbar">
+          <span class="editor-save-indicator" id="editor-save-indicator"></span>
+          <button type="button" class="subtle-button editor-save-button" data-source-save>保存源码</button>
+        </div>
+        <textarea class="markdown-input" data-source-editor-input spellcheck="false" aria-label="Markdown source editor">${escapeHtml(state.draftMarkdown)}</textarea>
+      </div>
+    </section>
+  `;
+}
+
 function renderEditor(note) {
   if (!elements.editorContent) {
     return;
   }
 
+  const effectiveView = getEffectiveViewState();
+
   if (!note) {
     void teardownEditorHost();
     elements.editorContent.dataset.sourceOpen = 'false';
+    elements.editorContent.dataset.viewMode = effectiveView.mode;
+    elements.editorContent.innerHTML = renderPreviewPane('');
+    return;
     elements.editorContent.innerHTML = `
       <section class="preview-pane preview-frame">
         <div class="pane-body">
@@ -1626,12 +1853,30 @@ function renderEditor(note) {
     return;
   }
 
-  if (currentEditorHost && currentEditorNoteId === note.id) {
+  const shouldUseRichEditor = effectiveView.mode !== 'read' && !effectiveView.showSourceEditor;
+
+  if (shouldUseRichEditor && currentEditorHost && currentEditorNoteId === note.id) {
+    elements.editorContent.dataset.sourceOpen = 'false';
+    elements.editorContent.dataset.viewMode = effectiveView.mode;
+    renderEditorSaveIndicator();
+    renderEditorPanel();
+    return;
+  }
+
+  const markdown = state.draftMarkdown || note.rawMarkdown || '';
+  elements.editorContent.dataset.sourceOpen = String(effectiveView.showSourceEditor);
+  elements.editorContent.dataset.viewMode = effectiveView.mode;
+
+  if (!shouldUseRichEditor) {
+    void teardownEditorHost();
+    elements.editorContent.innerHTML = effectiveView.showSourceEditor
+      ? `${renderSourceEditorView()}${renderPreviewPane(markdown)}`
+      : renderPreviewPane(markdown);
     renderEditorSaveIndicator();
     return;
   }
 
-  elements.editorContent.dataset.sourceOpen = 'true';
+  elements.editorContent.dataset.sourceOpen = 'false';
   elements.editorContent.innerHTML = `
     <section class="editor-pane editor-pane-single">
       <div class="pane-body">
@@ -1644,6 +1889,29 @@ function renderEditor(note) {
   renderEditorSaveIndicator();
   renderEditorPanel();
   mountEditorHost(note.id, state.draftMarkdown);
+}
+
+function syncSourcePreview() {
+  if (!elements.editorContent || !state.view.showSourceEditor) {
+    return;
+  }
+
+  const previewContent = elements.editorContent.querySelector('[data-preview-content]');
+  const previewToc = elements.editorContent.querySelector('[data-preview-toc]');
+  if (!previewContent) {
+    return;
+  }
+
+  const markdown = state.draftMarkdown;
+  previewContent.innerHTML = renderMarkdownPreview(markdown);
+
+  if (previewToc) {
+    const headings = extractMarkdownHeadings(markdown);
+    previewToc.innerHTML = headings
+      .map((heading) => `<a class="toc-item" data-level="${heading.level}" href="#${escapeAttribute(heading.id)}">${escapeHtml(heading.title)}</a>`)
+      .join('');
+    previewToc.hidden = headings.length === 0;
+  }
 }
 
 function renderSidebar(note) {
@@ -1752,6 +2020,32 @@ function handleFormat(format) {
   void currentEditorHost.focus();
 }
 
+function shouldHandleEditorShortcut(event) {
+  if (!currentEditorHost || !getCurrentNote() || state.view.showSourceEditor) {
+    return false;
+  }
+
+  const target = event.target instanceof Element ? event.target : event.target?.parentElement;
+  if (!target?.closest) {
+    return false;
+  }
+
+  if (target.closest('#editor-utility-panel') || target.closest('[data-source-editor-input]')) {
+    return false;
+  }
+
+  return Boolean(target.closest('#editor-content'));
+}
+
+async function handleResolvedEditorShortcut(action) {
+  if (!currentEditorHost) {
+    return;
+  }
+
+  await currentEditorHost.run(action);
+  await currentEditorHost.focus();
+}
+
 
 async function handleParagraphMenuAction(action) {
   closeEditorMenuBar();
@@ -1771,6 +2065,66 @@ async function handleParagraphMenuAction(action) {
   void currentEditorHost.focus();
 }
 
+async function handleFormatMenuAction(action) {
+  closeEditorMenuBar();
+
+  const note = getCurrentNote();
+  if (!note) {
+    flashStatus('请先选择一篇笔记');
+    return;
+  }
+
+  if (!currentEditorHost) {
+    flashStatus('编辑器尚未就绪');
+    return;
+  }
+
+  void currentEditorHost.run(action);
+  void currentEditorHost.focus();
+}
+
+async function handleViewMenuAction(action) {
+  closeEditorMenuBar();
+
+  switch (action) {
+    case 'mode-read':
+      state.view.mode = 'read';
+      state.view.showSourceEditor = false;
+      renderAll();
+      return;
+    case 'mode-edit':
+      state.view.mode = 'edit';
+      renderAll();
+      return;
+    case 'mode-focus':
+      state.view.mode = 'focus';
+      renderAll();
+      return;
+    case 'toggle-left-sidebar':
+      state.view.showLeftSidebar = !state.view.showLeftSidebar;
+      renderWorkspaceViewState();
+      renderEditorMenuBar();
+      return;
+    case 'toggle-right-sidebar':
+      state.view.showRightSidebar = !state.view.showRightSidebar;
+      renderWorkspaceViewState();
+      renderEditorMenuBar();
+      return;
+    case 'toggle-source-editor':
+      if (!getCurrentNote()) {
+        flashStatus('请先选择一篇笔记');
+        return;
+      }
+      state.view.mode = 'edit';
+      state.view.showSourceEditor = !state.view.showSourceEditor;
+      renderEditor(getCurrentNote());
+      renderEditorMenuBar();
+      return;
+    default:
+      return;
+  }
+}
+
 async function handleEditMenuAction(action) {
   closeEditorMenuBar();
 
@@ -1788,8 +2142,6 @@ async function handleEditMenuAction(action) {
   };
 
   switch (action) {
-    case 'undo':
-    case 'redo':
     case 'cut':
     case 'copy':
     case 'select-all': {
@@ -1801,6 +2153,16 @@ async function handleEditMenuAction(action) {
       }
       return;
     }
+    case 'undo':
+    case 'redo': {
+      if (!editorHost) {
+        flashStatus('编辑器尚未就绪');
+        return;
+      }
+      await editorHost.run(action);
+      await focusEditor();
+      return;
+    }
     case 'paste': {
       await focusEditor();
       try {
@@ -1810,7 +2172,7 @@ async function handleEditMenuAction(action) {
           return;
         }
 
-        const inserted = document.execCommand('insertText', false, text);
+        const inserted = await currentEditorHost?.pasteMarkdown(text);
         if (!inserted) {
           flashStatus('当前环境暂不支持粘贴');
         }
@@ -1853,9 +2215,10 @@ async function handleEditorPanelAction(action) {
 
   const editorHost = currentEditorHost;
 
-  if (action === 'submit') {
+  if (action === 'submit' || action === 'submit-previous') {
     if (state.editorPanel.mode === 'find') {
-      const result = await editorHost?.findAndSelectNext(query, state.editorPanel.matchIndex);
+      const direction = action === 'submit-previous' ? 'previous' : 'next';
+      const result = await editorHost?.findAndSelect(query, state.editorPanel.matchIndex, direction);
       if (!result) {
         flashStatus('当前编辑器未就绪');
         return;
@@ -2522,6 +2885,7 @@ function closeEditorPanel() {
   }
 
   state.editorPanel.open = false;
+  void currentEditorHost?.clearSearchHighlights();
   renderEditorPanel();
 }
 
@@ -3140,8 +3504,10 @@ function renderEditorPanel() {
         </label>
       ` : ''}
       <div class="editor-utility-panel-status">${escapeHtml(statusText)}</div>
+      ${!isReplace ? '<div class="editor-utility-panel-hint">Enter 下一个，Shift+Enter 上一个</div>' : ''}
     </div>
     <div class="editor-utility-panel-actions">
+      ${!isReplace ? '<button type="button" class="ghost-button" data-editor-panel-action="submit-previous">查找上一个</button>' : ''}
       <button type="button" class="subtle-button" data-editor-panel-action="submit">${isReplace ? '替换一次' : '查找下一个'}</button>
       ${isReplace ? '<button type="button" class="subtle-button" data-editor-panel-action="replace-all">全部替换</button>' : ''}
       <button type="button" class="ghost-button" data-editor-panel-action="close">关闭</button>
@@ -3392,6 +3758,7 @@ function escapeAttribute(value) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
 }
+
 
 
 
