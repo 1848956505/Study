@@ -1691,6 +1691,13 @@ export function createServer({ appContext }) {
         return;
       }
 
+      if (request.method === 'DELETE' && url.pathname === '/api/knowledge/notes/recycle-bin') {
+        sendJson(response, 200, {
+          data: knowledge.emptyRecycleBin(toQueryObject(url))
+        });
+        return;
+      }
+
       if (request.method === 'POST' && url.pathname === '/api/knowledge/notes/batch/delete') {
         const body = await parseBody(request);
         sendJson(response, 200, {
@@ -1749,6 +1756,18 @@ export function createServer({ appContext }) {
 
       if (request.method === 'DELETE' && url.pathname.startsWith('/api/knowledge/notes/')) {
         const noteId = url.pathname.split('/')[4];
+        if (noteId === 'recycle-bin') {
+          sendJson(response, 404, {
+            error: 'Route not found'
+          });
+          return;
+        }
+        if (noteId && url.pathname.endsWith('/permanent')) {
+          sendJson(response, 200, {
+            data: knowledge.permanentlyDeleteNote({ id: decodeURIComponent(noteId) })
+          });
+          return;
+        }
         if (noteId && !url.pathname.endsWith('/tags') && !url.pathname.includes('/tags/')) {
           sendJson(response, 200, {
             data: knowledge.deleteNote({ id: decodeURIComponent(noteId) })

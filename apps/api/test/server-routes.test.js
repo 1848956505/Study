@@ -394,6 +394,88 @@ export const serverRouteTests = [
     }
   },
   {
+    name: 'deleted note routes support permanent delete and empty recycle bin',
+    async run() {
+      const { createAppContext } = await import('../src/app.factory.js');
+      const { createServer } = await import('../src/server.js');
+
+      const appContext = createAppContext();
+      const server = createServer({ appContext });
+
+      await new Promise((resolve) => server.listen(0, resolve));
+      const port = server.address().port;
+
+      try {
+        await requestJson({
+          port,
+          method: 'POST',
+          path: '/api/knowledge/notes',
+          body: {
+            id: 'server-note-permanent-a',
+            spaceId: 'space-recycle-clear',
+            folderId: 'folder-1',
+            title: 'Permanent A',
+            rawMarkdown: 'remove me forever'
+          }
+        });
+        await requestJson({
+          port,
+          method: 'POST',
+          path: '/api/knowledge/notes',
+          body: {
+            id: 'server-note-permanent-b',
+            spaceId: 'space-recycle-clear',
+            folderId: 'folder-1',
+            title: 'Permanent B',
+            rawMarkdown: 'clear me too'
+          }
+        });
+
+        await requestJson({
+          port,
+          method: 'DELETE',
+          path: '/api/knowledge/notes/server-note-permanent-a'
+        });
+        await requestJson({
+          port,
+          method: 'DELETE',
+          path: '/api/knowledge/notes/server-note-permanent-b'
+        });
+
+        const permanentlyDeleted = await requestJson({
+          port,
+          method: 'DELETE',
+          path: '/api/knowledge/notes/server-note-permanent-a/permanent'
+        });
+        const clearRecycle = await requestJson({
+          port,
+          method: 'DELETE',
+          path: '/api/knowledge/notes/recycle-bin?spaceId=space-recycle-clear'
+        });
+        const deletedList = await requestJson({
+          port,
+          method: 'GET',
+          path: '/api/knowledge/notes?spaceId=space-recycle-clear&deletedOnly=true&includeDeleted=true'
+        });
+        const deletedDetail = await requestJson({
+          port,
+          method: 'GET',
+          path: '/api/knowledge/notes/server-note-permanent-a?includeDeleted=true'
+        });
+
+        assert.equal(permanentlyDeleted.status, 200);
+        assert.equal(permanentlyDeleted.payload.data.id, 'server-note-permanent-a');
+        assert.equal(clearRecycle.status, 200);
+        assert.equal(clearRecycle.payload.data.deletedCount, 1);
+        assert.equal(deletedList.payload.data.length, 0);
+        assert.equal(deletedDetail.status, 400);
+        assert.match(deletedDetail.payload.error, /note not found/i);
+      } finally {
+        await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+      }
+    }
+  },
+  {
     name: 'GET linked notes route returns referenced notes for detail panel',
     async run() {
       const { createAppContext } = await import('../src/app.factory.js');

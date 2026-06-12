@@ -23,7 +23,8 @@ export function validateSiblingName({
   }
 
   const conflictingNote = siblingNotes.find((note) => (
-    note.id !== currentNoteId
+    !note.deleted
+    && note.id !== currentNoteId
     && normalizeComparableName(note.title) === candidate
   ));
   if (conflictingNote) {

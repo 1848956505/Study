@@ -42,6 +42,12 @@ export function createKnowledgeHttpHandlers({ knowledgeModule }) {
     restoreNote(params) {
       return noteService.restoreNote(params.id);
     },
+    permanentlyDeleteNote(params) {
+      return noteService.permanentlyDeleteNote(params.id);
+    },
+    emptyRecycleBin(query = {}) {
+      return noteService.emptyRecycleBin(query.spaceId ?? null);
+    },
     setFavorite(params, body = {}) {
       return noteService.setFavorite(params.id, body.favorite ?? true);
     },

@@ -28,7 +28,6 @@ import {
 import {
   buildTreeFromFlatFolders,
   deleteFolder as deleteLocalFolderTree,
-  deleteNote as deleteLocalNoteEntry,
   flattenFolderTree,
   insertFolder as insertLocalFolder,
   insertNote as insertLocalNote,
@@ -255,10 +254,10 @@ function bindEvents() {
   });
 
   elements.markdownImportInput?.addEventListener('change', async (event) => {
-    const files = event.target.files;
+    const files = Array.from(event.target.files ?? []);
     event.target.value = '';
 
-    if (!files?.length) {
+    if (!files.length) {
       return;
     }
 
@@ -300,10 +299,12 @@ function bindEvents() {
 
   elements.folderTree?.addEventListener('contextmenu', (event) => {
     const noteButton = event.target.closest('[data-note-id]');
+    const recycleNoteButton = event.target.closest('[data-recycle-note-id]');
+    const recycleSection = event.target.closest('[data-recycle-section]');
     const folderButton = event.target.closest('[data-folder-id]');
     const materialsSection = event.target.closest('[data-materials-section]');
 
-    if (!noteButton && !folderButton && !materialsSection) {
+    if (!noteButton && !recycleNoteButton && !recycleSection && !folderButton && !materialsSection) {
       return;
     }
 
@@ -315,6 +316,26 @@ function bindEvents() {
         y: event.clientY,
         targetKind: 'note',
         targetId: noteButton.dataset.noteId
+      });
+      return;
+    }
+
+    if (recycleNoteButton?.dataset.recycleNoteId) {
+      openContextMenu({
+        x: event.clientX,
+        y: event.clientY,
+        targetKind: 'note',
+        targetId: recycleNoteButton.dataset.recycleNoteId
+      });
+      return;
+    }
+
+    if (recycleSection) {
+      openContextMenu({
+        x: event.clientX,
+        y: event.clientY,
+        targetKind: 'recycle-section',
+        targetId: 'recycle'
       });
       return;
     }
@@ -767,7 +788,7 @@ async function ensureSpaceId() {
 async function refreshKnowledgeData(spaceId = state.currentSpaceId) {
   const [folderTreePayload, notesPayload, tagsPayload] = await Promise.all([
     fetchJson(`/api/knowledge/folders/tree?spaceId=${encodeURIComponent(spaceId)}`),
-    fetchJson(`/api/knowledge/notes?spaceId=${encodeURIComponent(spaceId)}`),
+    fetchJson(`/api/knowledge/notes?spaceId=${encodeURIComponent(spaceId)}&includeDeleted=true`),
     fetchJson(`/api/knowledge/tags?spaceId=${encodeURIComponent(spaceId)}`)
   ]);
 
@@ -876,7 +897,7 @@ function reconcileSelection() {
     state.selectedFolderId = null;
   }
 
-  const existingNoteIds = new Set(state.allNotes.map((note) => note.id));
+  const existingNoteIds = new Set(getActiveNotes().map((note) => note.id));
   state.openNoteTabs = state.openNoteTabs.filter((noteId) => existingNoteIds.has(noteId));
 
   const visibleNotes = getVisibleNotes();
@@ -1087,16 +1108,18 @@ function renderFolders() {
     return;
   }
 
+  const activeNotes = getActiveNotes();
+  const recycleNotes = getRecycleNotes();
   const topFolders = state.folderTree.filter((folder) => matchesFolderSearch(folder));
   const tagItems = state.tags
     .map((tag) => ({
       id: tag.id,
       label: tag.name,
-      meta: String(state.allNotes.filter((note) => (note.tagIds ?? []).includes(tag.id)).length)
+      meta: String(activeNotes.filter((note) => (note.tagIds ?? []).includes(tag.id)).length)
     }))
     .filter((tag) => matchesSearch(tag.label));
-  const favoriteNotes = state.allNotes.filter((note) => note.favorite && matchesSearch(note.title));
-  const recentNotes = [...state.allNotes]
+  const favoriteNotes = activeNotes.filter((note) => note.favorite && matchesSearch(note.title));
+  const recentNotes = [...activeNotes]
     .sort((left, right) => new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime())
     .filter((note) => matchesSearch(note.title))
     .slice(0, 5);
@@ -1165,8 +1188,10 @@ function renderFolders() {
       renderNavSection({
         key: 'recycle',
         label: '回收站',
-        count: 0,
-        children: renderEmptyItem('暂未接入')
+        count: recycleNotes.length,
+        children: recycleNotes.length
+          ? recycleNotes.map((note) => renderRecycleNoteNode(note, 1)).join('')
+          : renderEmptyItem('暂无回收站文件')
       })
     );
   }
@@ -1383,35 +1408,46 @@ function renderEditorMenuItem({
 
 function renderViewMenu(note, effectiveView) {
   const hasNote = Boolean(note);
+  const hasEditableNote = Boolean(note && !note.deleted);
 
   return `
     <div class="editor-menu-popover" data-editor-menu="view">
       <button type="button" class="editor-menu-item" data-view-menu-action="mode-read" data-active="${effectiveView.mode === 'read'}">阅读模式</button>
       <button type="button" class="editor-menu-item" data-view-menu-action="mode-edit" data-active="${effectiveView.mode === 'edit'}">编辑模式</button>
       <button type="button" class="editor-menu-item" data-view-menu-action="mode-focus" data-active="${effectiveView.mode === 'focus'}">专注模式</button>
-      <button type="button" class="editor-menu-item" data-file-menu-action="import-markdown">导入 Markdown</button>
       <div class="editor-menu-divider" aria-hidden="true"></div>
       <button type="button" class="editor-menu-item" data-view-menu-action="toggle-left-sidebar" data-active="${effectiveView.showLeftSidebar}">${effectiveView.showLeftSidebar ? '隐藏左侧目录区' : '显示左侧目录区'}</button>
       <button type="button" class="editor-menu-item" data-view-menu-action="toggle-right-sidebar" data-active="${effectiveView.showRightSidebar}">${effectiveView.showRightSidebar ? '隐藏右侧辅助区' : '显示右侧辅助区'}</button>
-      <button type="button" class="editor-menu-item" data-view-menu-action="toggle-source-editor" data-active="${effectiveView.showSourceEditor}" ${hasNote ? '' : 'disabled'}>${effectiveView.showSourceEditor ? '隐藏源码编辑器' : '显示源码编辑器'}</button>
+      <button type="button" class="editor-menu-item" data-view-menu-action="toggle-source-editor" data-active="${effectiveView.showSourceEditor}" ${hasEditableNote ? '' : 'disabled'}>${effectiveView.showSourceEditor ? '隐藏源码编辑器' : '显示源码编辑器'}</button>
     </div>
   `;
 }
 
 function renderFileMenu(note) {
   const hasNote = Boolean(note);
+  const hasEditableNote = Boolean(note && !note.deleted);
+  const isDeletedNote = Boolean(note?.deleted);
 
   return `
     <div class="editor-menu-popover" data-editor-menu="file">
       <button type="button" class="editor-menu-item" data-file-menu-action="new-note">新建笔记</button>
       <button type="button" class="editor-menu-item" data-file-menu-action="new-folder">新建文件夹</button>
+      <button type="button" class="editor-menu-item" data-file-menu-action="import-markdown">导入 Markdown</button>
       <div class="editor-menu-divider" aria-hidden="true"></div>
-      <button type="button" class="editor-menu-item" data-file-menu-action="save" ${hasNote ? '' : 'disabled'}>保存</button>
-      <button type="button" class="editor-menu-item" data-file-menu-action="save-as" ${hasNote ? '' : 'disabled'}>另存为</button>
-      <button type="button" class="editor-menu-item" data-file-menu-action="rename" ${hasNote ? '' : 'disabled'}>重命名</button>
+      <button type="button" class="editor-menu-item" data-file-menu-action="save" ${hasEditableNote ? '' : 'disabled'}>保存</button>
+      <button type="button" class="editor-menu-item" data-file-menu-action="save-as" ${hasEditableNote ? '' : 'disabled'}>另存为</button>
+      <button type="button" class="editor-menu-item" data-file-menu-action="rename" ${hasEditableNote ? '' : 'disabled'}>重命名</button>
+      ${isDeletedNote
+        ? '<button type="button" class="editor-menu-item" data-file-menu-action="restore-note">恢复笔记</button>'
+        : hasEditableNote
+          ? `
+            <button type="button" class="editor-menu-item" data-file-menu-action="favorite-note">${note.favorite ? '取消收藏' : '收藏笔记'}</button>
+            <button type="button" class="editor-menu-item" data-file-menu-action="delete-note">删除</button>
+          `
+          : ''}
       <div class="editor-menu-divider" aria-hidden="true"></div>
-      <button type="button" class="editor-menu-item" data-file-menu-action="export-markdown" ${hasNote ? '' : 'disabled'}>导出 Markdown</button>
-      <button type="button" class="editor-menu-item" data-file-menu-action="export-pdf" ${hasNote ? '' : 'disabled'}>导出 PDF</button>
+      <button type="button" class="editor-menu-item" data-file-menu-action="export-markdown" ${hasEditableNote ? '' : 'disabled'}>导出 Markdown</button>
+      <button type="button" class="editor-menu-item" data-file-menu-action="export-pdf" ${hasEditableNote ? '' : 'disabled'}>导出 PDF</button>
     </div>
   `;
 }
@@ -1441,6 +1477,7 @@ function renderTabMenu() {
 function renderNavSection({ key, label, count, children }) {
   const open = state.navSections[key] ?? false;
   const isMaterials = key === 'materials';
+  const isRecycle = key === 'recycle';
   const isDropTarget = isMaterials && isRootDropActive();
 
   return `
@@ -1453,6 +1490,7 @@ function renderNavSection({ key, label, count, children }) {
         data-level="0"
         data-drop-target="${isDropTarget}"
         ${isMaterials ? 'data-materials-section="true"' : ''}
+        ${isRecycle ? 'data-recycle-section="true"' : ''}
       >
         <span class="library-node-leading">
           <svg viewBox="0 0 16 16" aria-hidden="true" class="library-chevron" data-open="${open}">
@@ -1595,6 +1633,26 @@ function renderNoteNode(note, level) {
   `;
 }
 
+function renderRecycleNoteNode(note, level) {
+  return `
+    <div class="library-node-group">
+      <button
+        type="button"
+        class="library-node library-note-node library-note-node-recycle"
+        data-recycle-note-id="${note.id}"
+        data-level="${level}"
+        title="${escapeHtml(note.title)}"
+      >
+        <span class="library-node-leading">
+          <span class="library-node-spacer"></span>
+          ${renderNoteIcon(resolveNoteVisualType(note))}
+        </span>
+        <span class="library-node-label">${escapeHtml(note.title)}</span>
+      </button>
+    </div>
+  `;
+}
+
 function renderInlineEditorRow(level, mode, value) {
   const placeholder = mode.includes('folder') ? '输入目录名称' : '输入文件名称';
 
@@ -1719,13 +1777,47 @@ function getContextMenuItems() {
         { action: 'delete-folder', label: '删除' }
       ];
     case 'note':
-      return [
-        { action: 'rename-note', label: '重命名' },
-        { action: 'delete-note', label: '删除' }
-      ];
+      return getMenuTargetNoteItems();
+    case 'recycle-section':
+      return getRecycleSectionMenuItems();
     default:
       return [];
   }
+}
+
+function getMenuTargetNoteItems() {
+  const note = getNoteById(state.contextMenu.targetId);
+  if (!note) {
+    return [];
+  }
+
+  if (note.deleted) {
+    return [
+      { action: 'restore-note', label: '恢复笔记' },
+      { type: 'divider' },
+      { action: 'permanently-delete-note', label: '彻底删除' }
+    ];
+  }
+
+  return [
+    {
+      action: 'favorite-note',
+      label: note.favorite ? '取消收藏' : '收藏笔记'
+    },
+    { type: 'divider' },
+    { action: 'rename-note', label: '重命名' },
+    { action: 'delete-note', label: '删除' }
+  ];
+}
+
+function getRecycleSectionMenuItems() {
+  if (getRecycleNotes().length === 0) {
+    return [];
+  }
+
+  return [
+    { action: 'empty-recycle-bin', label: '清空回收站' }
+  ];
 }
 
 function renderSectionMenu() {
@@ -1862,13 +1954,13 @@ function renderEditor(note) {
     elements.editorContent.dataset.viewMode = effectiveView.mode;
     elements.editorContent.innerHTML = renderPreviewPane('');
     return;
-    elements.editorContent.innerHTML = `
-      <section class="preview-pane preview-frame">
-        <div class="pane-body">
-          <article class="preview-rendered"><p>当前目录下还没有可显示的笔记。</p></article>
-        </div>
-      </section>
-    `;
+  }
+
+  if (note.deleted) {
+    void teardownEditorHost();
+    elements.editorContent.dataset.sourceOpen = 'false';
+    elements.editorContent.dataset.viewMode = 'recycle';
+    elements.editorContent.innerHTML = renderPreviewPane(note.rawMarkdown || '');
     return;
   }
 
@@ -2324,11 +2416,44 @@ async function handleContextMenuAction(action) {
       return;
     }
     case 'rename-note': {
-      const note = state.allNotes.find((item) => item.id === targetId);
-      if (!note) {
+      const note = getNoteById(targetId);
+      if (!note || note.deleted) {
         return;
       }
       startTreeEditor({ mode: 'rename-note', targetId: note.id, value: note.title });
+      return;
+    }
+    case 'favorite-note': {
+      const note = getNoteById(targetId);
+      if (!note || note.deleted) {
+        return;
+      }
+      const nextFavorite = !note.favorite;
+      await setNoteFavorite(note.id, nextFavorite);
+      flashStatus(nextFavorite ? '已收藏笔记' : '已取消收藏');
+      return;
+    }
+    case 'restore-note': {
+      const note = getNoteById(targetId);
+      if (!note || !note.deleted) {
+        return;
+      }
+      await restoreNote(note.id);
+      flashStatus('笔记已恢复');
+      return;
+    }
+    case 'permanently-delete-note': {
+      const note = getNoteById(targetId);
+      if (!note || !note.deleted) {
+        return;
+      }
+      await permanentlyDeleteNote(note.id);
+      flashStatus('笔记已彻底删除');
+      return;
+    }
+    case 'empty-recycle-bin': {
+      await emptyRecycleBin();
+      flashStatus('回收站已清空');
       return;
     }
     case 'delete-folder': {
@@ -2341,8 +2466,8 @@ async function handleContextMenuAction(action) {
       return;
     }
     case 'delete-note': {
-      const note = state.allNotes.find((item) => item.id === targetId);
-      if (!note) {
+      const note = getNoteById(targetId);
+      if (!note || note.deleted) {
         return;
       }
       state.deleteIntent = { kind: 'note', targetId: note.id };
@@ -2747,10 +2872,100 @@ async function deleteNote(noteId) {
     return;
   }
 
-  state.allNotes = deleteLocalNoteEntry(state.allNotes, noteId);
+  state.allNotes = state.allNotes.map((note) => (
+    note.id === noteId
+      ? { ...note, deleted: true, updatedAt: new Date().toISOString() }
+      : note
+  ));
   if (state.selectedNoteId === noteId) {
     state.selectedNoteId = null;
   }
+  syncLocalWorkspace();
+}
+
+async function permanentlyDeleteNote(noteId) {
+  if (state.dataMode === 'api') {
+    await fetchJson(`/api/knowledge/notes/${encodeURIComponent(noteId)}/permanent`, {
+      method: 'DELETE'
+    });
+    if (state.selectedNoteId === noteId) {
+      state.selectedNoteId = null;
+    }
+    await refreshKnowledgeData();
+    await loadCurrentNoteSideData();
+    renderAll();
+    return;
+  }
+
+  state.allNotes = state.allNotes.filter((note) => note.id !== noteId);
+  if (state.selectedNoteId === noteId) {
+    state.selectedNoteId = null;
+  }
+  syncLocalWorkspace();
+}
+
+async function restoreNote(noteId) {
+  if (state.dataMode === 'api') {
+    await fetchJson(`/api/knowledge/notes/${encodeURIComponent(noteId)}/restore`, {
+      method: 'POST'
+    });
+    if (state.selectedNoteId === noteId) {
+      state.selectedNoteId = null;
+    }
+    await refreshKnowledgeData();
+    await loadCurrentNoteSideData();
+    renderAll();
+    return;
+  }
+
+  state.allNotes = state.allNotes.map((note) => (
+    note.id === noteId
+      ? { ...note, deleted: false, updatedAt: new Date().toISOString() }
+      : note
+  ));
+  syncLocalWorkspace();
+}
+
+async function emptyRecycleBin() {
+  if (state.dataMode === 'api') {
+    await fetchJson(`/api/knowledge/notes/recycle-bin?spaceId=${encodeURIComponent(state.currentSpaceId)}`, {
+      method: 'DELETE'
+    });
+    if (state.selectedNoteId && getNoteById(state.selectedNoteId)?.deleted) {
+      state.selectedNoteId = null;
+    }
+    await refreshKnowledgeData();
+    await loadCurrentNoteSideData();
+    renderAll();
+    return;
+  }
+
+  state.allNotes = state.allNotes.filter((note) => !note.deleted);
+  if (state.selectedNoteId && !getNoteById(state.selectedNoteId)) {
+    state.selectedNoteId = null;
+  }
+  syncLocalWorkspace();
+}
+
+async function setNoteFavorite(noteId, favorite) {
+  if (state.dataMode === 'api') {
+    await fetchJson(`/api/knowledge/notes/${encodeURIComponent(noteId)}/favorite`, {
+      method: 'POST',
+      body: JSON.stringify({
+        favorite
+      })
+    });
+    await refreshKnowledgeData();
+    await loadCurrentNoteSideData();
+    renderAll();
+    return;
+  }
+
+  state.allNotes = state.allNotes.map((note) => (
+    note.id === noteId
+      ? { ...note, favorite: Boolean(favorite), updatedAt: new Date().toISOString() }
+      : note
+  ));
   syncLocalWorkspace();
 }
 
@@ -2997,6 +3212,25 @@ async function handleFileMenuAction(action) {
     case 'import-markdown':
       elements.markdownImportInput?.click();
       return;
+    case 'favorite-note':
+      if (note && !note.deleted) {
+        const nextFavorite = !note.favorite;
+        await setNoteFavorite(note.id, nextFavorite);
+        flashStatus(nextFavorite ? '已收藏笔记' : '已取消收藏');
+      }
+      return;
+    case 'delete-note':
+      if (note && !note.deleted) {
+        await deleteNote(note.id);
+        flashStatus('笔记已删除');
+      }
+      return;
+    case 'restore-note':
+      if (note?.deleted) {
+        await restoreNote(note.id);
+        flashStatus('笔记已恢复');
+      }
+      return;
     case 'save':
       await persistDraft({ immediate: true });
       return;
@@ -3062,12 +3296,23 @@ async function importMarkdownFiles(files) {
       body: JSON.stringify(payload)
     });
 
-    await refreshKnowledgeData();
-
     const importedResponseItems = Array.isArray(response.data) ? response.data : [response.data];
     const firstImported = importedResponseItems.find((item) => item?.id) ?? null;
+
     if (firstImported?.id) {
-      await selectNote(firstImported.id, { syncFolder: true, ensureTab: true });
+      state.selectedNoteId = firstImported.id;
+      state.selectedFolderId = firstImported.folderId ?? folderId ?? null;
+      state.openNoteTabs = ensureOpenTab(state.openNoteTabs, firstImported.id);
+      if (state.selectedFolderId) {
+        openFolderBranch(state.selectedFolderId);
+      }
+    }
+
+    await refreshKnowledgeData();
+
+    if (firstImported?.id) {
+      await loadCurrentNoteSideData();
+      renderAll();
     } else {
       await loadCurrentNoteSideData();
       renderAll();
@@ -3100,6 +3345,9 @@ async function importMarkdownFiles(files) {
     (tabs, item) => ensureOpenTab(tabs, item.id),
     state.openNoteTabs
   );
+  if (state.selectedFolderId) {
+    openFolderBranch(state.selectedFolderId);
+  }
   syncLocalWorkspace();
 
   flashStatus(
@@ -3454,6 +3702,24 @@ function getCurrentNote() {
   return state.allNotes.find((note) => note.id === state.selectedNoteId) ?? null;
 }
 
+function getNoteById(noteId) {
+  if (!noteId) {
+    return null;
+  }
+
+  return state.allNotes.find((note) => note.id === noteId) ?? null;
+}
+
+function getActiveNotes() {
+  return state.allNotes.filter((note) => !note.deleted);
+}
+
+function getRecycleNotes() {
+  return state.allNotes
+    .filter((note) => note.deleted)
+    .sort((left, right) => new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime());
+}
+
 async function teardownEditorHost() {
   pendingEditorNoteId = null;
   currentEditorNoteId = null;
@@ -3741,11 +4007,11 @@ async function persistDraft({ immediate = false } = {}) {
 }
 
 function getVisibleNotes() {
-  return state.allNotes.filter((note) => isNoteVisible(note) && matchesSearch(note.title));
+  return state.allNotes.filter((note) => !note.deleted && isNoteVisible(note) && matchesSearch(note.title));
 }
 
 function getDirectNotesForFolder(folderId) {
-  return state.allNotes.filter((note) => note.folderId === folderId);
+  return state.allNotes.filter((note) => !note.deleted && note.folderId === folderId);
 }
 
 function isNoteVisible(note) {
@@ -3823,13 +4089,13 @@ function normalizeNotes(notes) {
   }
 
   return notes
-    .filter((note) => !note.deleted)
     .map((note) => ({
       ...note,
       tagIds: [...(note.tagIds ?? [])],
       internalLinks: [...(note.internalLinks ?? [])],
       rawMarkdown: note.rawMarkdown ?? '',
-      favorite: Boolean(note.favorite)
+      favorite: Boolean(note.favorite),
+      deleted: Boolean(note.deleted)
     }));
 }
 

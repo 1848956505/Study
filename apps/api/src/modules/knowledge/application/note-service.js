@@ -118,6 +118,29 @@ export function createNoteService({
       repository.save(restoredNote);
       return restoredNote;
     },
+    permanentlyDeleteNote(noteId) {
+      const currentNote = requireNote(noteId, { includeDeleted: true });
+      if (!currentNote.deleted) {
+        throw new Error('Note must be in recycle bin before permanent delete');
+      }
+
+      const deletedNote = repository.deleteById(noteId);
+      if (!deletedNote) {
+        throw new Error('Note not found');
+      }
+
+      return deletedNote;
+    },
+    emptyRecycleBin(spaceId = null) {
+      const deletedNotes = repository.deleteWhere((note) => (
+        note.deleted && (spaceId ? note.spaceId === spaceId : true)
+      ));
+
+      return {
+        deletedCount: deletedNotes.length,
+        noteIds: deletedNotes.map((note) => note.id)
+      };
+    },
     setFavorite(noteId, favorite = true) {
       const currentNote = requireNote(noteId, { includeDeleted: true });
       const updatedNote = new Note({

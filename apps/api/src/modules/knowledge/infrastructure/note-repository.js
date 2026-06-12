@@ -42,6 +42,16 @@ export function createInMemoryNoteRepository(options = {}) {
     findById(noteId) {
       return notes.find((note) => note.id === noteId) ?? null;
     },
+    deleteById(noteId) {
+      const existingIndex = notes.findIndex((note) => note.id === noteId);
+      if (existingIndex === -1) {
+        return null;
+      }
+
+      const [deletedNote] = notes.splice(existingIndex, 1);
+      persist();
+      return deletedNote;
+    },
     list(options = {}) {
       const results = notes
         .filter((note) => {
@@ -71,6 +81,24 @@ export function createInMemoryNoteRepository(options = {}) {
       }
 
       return results;
+    },
+    deleteWhere(predicate) {
+      const deletedNotes = [];
+
+      for (let index = notes.length - 1; index >= 0; index -= 1) {
+        if (!predicate(notes[index])) {
+          continue;
+        }
+
+        deletedNotes.push(notes[index]);
+        notes.splice(index, 1);
+      }
+
+      if (deletedNotes.length > 0) {
+        persist();
+      }
+
+      return deletedNotes.reverse();
     }
   };
 }

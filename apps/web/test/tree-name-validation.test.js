@@ -41,3 +41,13 @@ runTest('validateSiblingName ignores the current item when renaming', () => {
     });
   });
 });
+
+runTest('validateSiblingName ignores deleted sibling notes in recycle bin', () => {
+  assert.doesNotThrow(() => {
+    validateSiblingName({
+      candidateName: 'Test',
+      siblingFolders: [],
+      siblingNotes: [{ id: 'note-deleted', title: 'Test', deleted: true }]
+    });
+  });
+});
