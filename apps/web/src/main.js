@@ -88,21 +88,15 @@ function renderHtml(initialWorkspaceScript = '') {
               </section>
             </section>
             <aside class="kb-aside" id="kb-aside">
-              <section class="section-card">
-                <div class="info-grid" id="note-info"></div>
-              </section>
-              <section class="section-card">
-                <div id="tag-count">0</div>
-                <div class="pill-row" id="note-tags" style="margin-top: 12px;"></div>
-              </section>
-              <section class="section-card">
-                <div id="linked-count">0</div>
-                <div class="linked-list" id="linked-notes" style="margin-top: 12px;"></div>
-              </section>
-              <section class="section-card">
-                <div id="attachment-count">0</div>
-                <div class="resource-list" id="attachments" style="margin-top: 12px;"></div>
-              </section>
+              <div class="aside-tabs" id="aside-tabs">
+                <button type="button" class="aside-tab" data-aside-tab="info" data-active="true">信息</button>
+                <button type="button" class="aside-tab" data-aside-tab="outline" data-active="false">大纲</button>
+                <button type="button" class="aside-tab" data-aside-tab="concepts" data-active="false">知识点</button>
+                <button type="button" class="aside-tab" data-aside-tab="ai" data-active="false">AI</button>
+              </div>
+              <div class="aside-panel-scroll">
+                <div class="aside-content" id="aside-content"></div>
+              </div>
             </aside>
           </div>
         </main>
@@ -116,6 +110,7 @@ function renderHtml(initialWorkspaceScript = '') {
   <div class="library-context-menu" id="library-context-menu" hidden></div>
   <div class="library-context-menu library-section-menu" id="library-section-menu" hidden></div>
   <div class="note-tab-menu" id="note-tab-menu" hidden></div>
+  <div class="editor-context-menu" id="editor-context-menu" hidden></div>
   <input id="markdown-import-input" type="file" accept=".md,.markdown,text/markdown,text/plain" multiple hidden />
   ${initialWorkspaceScript}
   <script type="module" src="/src/client.js"></script>

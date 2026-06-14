@@ -1,4 +1,4 @@
-import { knowledgeBaseSeed } from '../lib/mock-knowledge-base.js';
+﻿import { knowledgeBaseSeed } from '../lib/mock-knowledge-base.js';
 import { createMilkdownHost } from '../lib/editor/milkdown-bundle.js';
 import {
   buildNoteTabPath,
@@ -47,11 +47,63 @@ const AUTOSAVE_DELAY_MS = 700;
 
 const SECONDARY_SECTION_ITEMS = [
   { key: 'tags', label: '标签' },
-  { key: 'concepts', label: '知识点' },
   { key: 'favorites', label: '收藏' },
   { key: 'recent', label: '最近' },
   { key: 'recycle', label: '回收站' }
 ];
+
+const ASIDE_TABS = [
+  { key: 'info', label: '信息' },
+  { key: 'outline', label: '大纲' },
+  { key: 'concepts', label: '知识点' },
+  { key: 'ai', label: 'AI' }
+];
+
+const editorContextPrimaryActions = ['cut', 'copy', 'paste', 'delete'];
+const editorContextFormatActions = ['bold', 'italic', 'codeblock', 'quote'];
+const editorContextListActions = ['ordered', 'bullet', 'task-list'];
+const editorContextIndentActions = ['outdent', 'indent'];
+const editorContextParagraphItems = [
+  'paragraph',
+  'heading-1',
+  'heading-2',
+  'heading-3',
+  'heading-4',
+  'heading-5',
+  'heading-6'
+];
+const editorContextInsertItems = [
+  'hr',
+  'codeblock',
+  'quote',
+  'paragraph-above',
+  'paragraph-below'
+];
+const editorContextActionMeta = {
+  cut: { label: '剪切', icon: 'cut' },
+  copy: { label: '复制', icon: 'copy' },
+  paste: { label: '粘贴', icon: 'paste' },
+  delete: { label: '删除', icon: 'delete' },
+  bold: { label: '加粗', icon: 'bold' },
+  italic: { label: '斜体', icon: 'italic' },
+  codeblock: { label: '代码块', icon: 'codeblock' },
+  quote: { label: '引用', icon: 'quote' },
+  ordered: { label: '有序列表', icon: 'ordered' },
+  bullet: { label: '无序列表', icon: 'bullet' },
+  'task-list': { label: '任务列表', icon: 'task-list' },
+  outdent: { label: '减少缩进', icon: 'outdent' },
+  indent: { label: '增加缩进', icon: 'indent' },
+  paragraph: { label: '段落' },
+  'heading-1': { label: 'H1' },
+  'heading-2': { label: 'H2' },
+  'heading-3': { label: 'H3' },
+  'heading-4': { label: 'H4' },
+  'heading-5': { label: 'H5' },
+  'heading-6': { label: 'H6' },
+  hr: { label: '水平分割线' },
+  'paragraph-above': { label: '段落（上方）' },
+  'paragraph-below': { label: '段落（下方）' }
+};
 
 const state = {
   dataMode: 'loading',
@@ -66,18 +118,17 @@ const state = {
   navSections: {
     materials: true,
     tags: false,
-    concepts: false,
     favorites: false,
     recent: false,
     recycle: false
   },
   secondarySections: {
     tags: true,
-    concepts: true,
     favorites: true,
     recent: true,
     recycle: true
   },
+  asideTab: 'info',
   openFolders: {},
   draftMarkdown: '',
   searchQuery: '',
@@ -113,6 +164,11 @@ const state = {
     x: 0,
     y: 0,
     noteId: null
+  },
+  editorContextMenu: {
+    open: false,
+    x: 0,
+    y: 0
   },
   treeEditor: null,
   deleteIntent: null,
@@ -226,16 +282,12 @@ function cacheElements() {
   elements.noteTabs = document.getElementById('note-tabs');
   elements.editorMenuBar = document.getElementById('editor-menu-bar');
   elements.noteTabMenu = document.getElementById('note-tab-menu');
+  elements.editorContextMenu = document.getElementById('editor-context-menu');
   elements.markdownImportInput = document.getElementById('markdown-import-input');
   elements.editorContent = document.getElementById('editor-content');
   elements.aside = document.getElementById('kb-aside');
-  elements.noteInfo = document.getElementById('note-info');
-  elements.tagCount = document.getElementById('tag-count');
-  elements.noteTags = document.getElementById('note-tags');
-  elements.linkedCount = document.getElementById('linked-count');
-  elements.linkedNotes = document.getElementById('linked-notes');
-  elements.attachmentCount = document.getElementById('attachment-count');
-  elements.attachments = document.getElementById('attachments');
+  elements.asideTabs = document.getElementById('aside-tabs');
+  elements.asideContent = document.getElementById('aside-content');
   elements.statusIndicators = document.getElementById('status-indicators');
   elements.statusMeta = document.getElementById('status-meta');
 }
@@ -491,20 +543,67 @@ function bindEvents() {
     renderFolders();
   });
 
-  elements.linkedNotes?.addEventListener('click', (event) => {
-    const button = event.target.closest('[data-linked-id]');
-    if (!button) {
+  elements.asideTabs?.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-aside-tab]');
+    if (!button?.dataset.asideTab || state.asideTab === button.dataset.asideTab) {
       return;
     }
-    void selectNote(button.dataset.linkedId, { syncFolder: true });
+    state.asideTab = button.dataset.asideTab;
+    renderSidebar(getCurrentNote());
   });
 
-  elements.attachments?.addEventListener('click', (event) => {
-    const button = event.target.closest('[data-attachment-name]');
-    if (!button) {
+  elements.asideContent?.addEventListener('click', (event) => {
+    const linkedButton = event.target.closest('[data-linked-id]');
+    if (linkedButton?.dataset.linkedId) {
+      void selectNote(linkedButton.dataset.linkedId, { syncFolder: true });
       return;
     }
-    flashStatus(`已选中附件：${button.dataset.attachmentName ?? ''}`);
+
+    const attachmentButton = event.target.closest('[data-attachment-name]');
+    if (attachmentButton?.dataset.attachmentName) {
+      flashStatus(`已选中附件：${attachmentButton.dataset.attachmentName}`);
+      return;
+    }
+
+    const outlineButton = event.target.closest('[data-outline-id]');
+    if (!outlineButton?.dataset.outlineId) {
+      return;
+    }
+
+    const targetHeading = document.getElementById(outlineButton.dataset.outlineId);
+    if (!targetHeading) {
+      flashStatus('当前标题尚未出现在预览区');
+      return;
+    }
+
+    targetHeading.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
+
+  elements.editorContent?.addEventListener('contextmenu', (event) => {
+    if (!currentEditorHost || !getCurrentNote() || state.view.showSourceEditor) {
+      return;
+    }
+
+    const target = event.target instanceof Element ? event.target : null;
+    if (!target?.closest('.milkdown-host, .preview-rendered')) {
+      return;
+    }
+
+    event.preventDefault();
+    openEditorContextMenu({
+      x: event.clientX,
+      y: event.clientY
+    });
+  });
+
+  elements.editorContextMenu?.addEventListener('click', (event) => {
+    const actionButton = event.target.closest('[data-editor-context-action]');
+    if (!actionButton?.dataset.editorContextAction) {
+      return;
+    }
+
+    event.stopPropagation();
+    void handleEditorContextMenuAction(actionButton.dataset.editorContextAction);
   });
 
   document.addEventListener('click', (event) => {
@@ -520,11 +619,13 @@ function bindEvents() {
     if (event.target.closest('#library-section-menu')) return;
     if (event.target.closest('#note-tab-menu')) return;
     if (event.target.closest('#editor-menu-bar')) return;
+    if (event.target.closest('#editor-context-menu')) return;
     if (event.target.closest('#secondary-nav-toggle')) return;
     closeContextMenu();
     closeSectionMenu();
     closeTabMenu();
     closeEditorMenuBar();
+    closeEditorContextMenu();
   });
 
   document.addEventListener('keydown', (event) => {
@@ -533,6 +634,7 @@ function bindEvents() {
       closeSectionMenu();
       closeTabMenu();
       closeEditorMenuBar();
+      closeEditorContextMenu();
     }
   });
 
@@ -1072,6 +1174,7 @@ function renderAll() {
   renderEditorMenuBar();
   renderEditor(getCurrentNote());
   renderSidebar(getCurrentNote());
+  renderEditorContextMenu();
   renderStatus();
 }
 
@@ -1142,17 +1245,6 @@ function renderFolders() {
         children: tagItems.length
           ? tagItems.map((item) => renderStaticItem(item.label, item.meta)).join('')
           : renderEmptyItem('暂无标签')
-      })
-    );
-  }
-
-  if (state.secondarySections.concepts) {
-    sections.push(
-      renderNavSection({
-        key: 'concepts',
-        label: '知识点',
-        count: 0,
-        children: renderEmptyItem('暂未接入')
       })
     );
   }
@@ -1319,7 +1411,7 @@ function renderEditorMenuBar() {
           data-editor-menu-toggle="view"
           data-open="${viewMenuOpen}"
         >
-          视图
+          瑙嗗浘
         </button>
         ${viewMenuOpen ? renderViewMenu(note, effectiveView) : ''}
       </div>
@@ -1467,10 +1559,10 @@ function renderTabMenu() {
   elements.noteTabMenu.style.left = `${state.tabMenu.x}px`;
   elements.noteTabMenu.style.top = `${state.tabMenu.y}px`;
   elements.noteTabMenu.innerHTML = `
-    <button type="button" class="note-tab-menu-item" data-tab-menu-action="close">\u5173\u95ed</button>
-    <button type="button" class="note-tab-menu-item" data-tab-menu-action="close-others">\u5173\u95ed\u5176\u4ed6</button>
+    <button type="button" class="note-tab-menu-item" data-tab-menu-action="close">关闭</button>
+    <button type="button" class="note-tab-menu-item" data-tab-menu-action="close-others">关闭其他</button>
     <div class="note-tab-menu-divider" aria-hidden="true"></div>
-    <button type="button" class="note-tab-menu-item" data-tab-menu-action="copy-path">\u590d\u5236\u8def\u5f84</button>
+    <button type="button" class="note-tab-menu-item" data-tab-menu-action="copy-path">复制路径</button>
   `;
 }
 
@@ -1673,7 +1765,7 @@ function renderInlineEditorRow(level, mode, value) {
         />
         <div class="library-inline-actions">
           <button type="submit" class="library-inline-action" title="确认">✓</button>
-          <button type="button" class="library-inline-action" data-editor-cancel title="取消">✕</button>
+          <button type="button" class="library-inline-action" data-editor-cancel title="取消">×</button>
         </div>
       </form>
     </div>
@@ -2026,82 +2118,517 @@ function syncSourcePreview() {
 }
 
 function renderSidebar(note) {
-  if (!elements.noteInfo || !elements.tagCount || !elements.noteTags || !elements.linkedCount || !elements.linkedNotes || !elements.attachmentCount || !elements.attachments) {
+  if (!elements.asideTabs || !elements.asideContent) {
     return;
   }
+
+  elements.asideTabs.innerHTML = ASIDE_TABS
+    .map(
+      (tab) => `
+        <button
+          type="button"
+          class="aside-tab"
+          data-aside-tab="${tab.key}"
+          data-active="${String(state.asideTab === tab.key)}"
+        >${escapeHtml(tab.label)}</button>
+      `
+    )
+    .join('');
 
   if (!note) {
-    elements.noteInfo.innerHTML = '';
-    elements.tagCount.textContent = '0';
-    elements.noteTags.innerHTML = '';
-    elements.linkedCount.textContent = '0';
-    elements.linkedNotes.innerHTML = '';
-    elements.attachmentCount.textContent = '0';
-    elements.attachments.innerHTML = '';
+    elements.asideContent.innerHTML = renderAsideEmptyState();
     return;
   }
 
-  const folder = note.folderId ? state.foldersById[note.folderId] : null;
+  switch (state.asideTab) {
+    case 'outline':
+      elements.asideContent.innerHTML = renderOutlineTab(note);
+      return;
+    case 'concepts':
+      elements.asideContent.innerHTML = renderConceptsTab(note);
+      return;
+    case 'ai':
+      elements.asideContent.innerHTML = renderAiTab(note);
+      return;
+    case 'info':
+    default:
+      elements.asideContent.innerHTML = renderInfoTab(note);
+  }
+}
+
+function renderAsideEmptyState() {
+  return `
+    <section class="aside-panel-empty">
+      <strong>未打开笔记</strong>
+      <span>请先在左侧选择一个文件。</span>
+    </section>
+  `;
+}
+
+function renderInfoTab(note) {
   const tags = (note.tagIds ?? [])
     .map((tagId) => state.tags.find((tag) => tag.id === tagId))
     .filter(Boolean);
+  const stats = getNoteStats(state.draftMarkdown || note.rawMarkdown || '');
 
-  elements.noteInfo.innerHTML = `
-    <div class="info-row"><span>标题</span><strong>${escapeHtml(note.title)}</strong></div>
-    <div class="info-row"><span>目录</span><strong>${escapeHtml(folder?.name ?? '未分类')}</strong></div>
-    <div class="info-row"><span>更新时间</span><strong>${formatDate(note.updatedAt)}</strong></div>
-    <div class="info-row"><span>收藏</span><strong>${note.favorite ? '是' : '否'}</strong></div>
+  return `
+    <section class="aside-panel-stack">
+      <section class="aside-card note-info-card">
+        <div class="aside-card-header">
+          <span>笔记信息</span>
+        </div>
+        <div class="info-grid">
+          <div class="info-row"><span>标题</span><strong>${escapeHtml(note.title)}</strong></div>
+          <div class="info-row"><span>路径</span><strong>${escapeHtml(buildFolderPath(note.folderId))}</strong></div>
+          <div class="info-row"><span>字数</span><strong>${stats.characterCount}</strong></div>
+          <div class="info-row"><span>更新时间</span><strong>${formatDate(note.updatedAt)}</strong></div>
+          <div class="info-row"><span>创建时间</span><strong>${formatDate(note.createdAt)}</strong></div>
+          <div class="info-row"><span>收藏状态</span><strong>${note.favorite ? '已收藏' : '未收藏'}</strong></div>
+        </div>
+      </section>
+      <section class="aside-card">
+        <div class="aside-card-header">
+          <span>标签</span>
+          <strong>${tags.length}</strong>
+        </div>
+        <div class="pill-row">
+          ${tags.length ? renderTagPills(tags) : renderAsideEmptyInline('暂无标签')}
+        </div>
+      </section>
+      <section class="aside-card">
+        <div class="aside-card-header">
+          <span>关联笔记</span>
+          <strong>${state.linkedNotes.length}</strong>
+        </div>
+        <div class="linked-list">
+          ${state.linkedNotes.length ? renderLinkedNotes(state.linkedNotes) : renderAsideEmptyInline('暂无关联笔记')}
+        </div>
+      </section>
+      <section class="aside-card">
+        <div class="aside-card-header">
+          <span>附件</span>
+          <strong>${state.attachments.length}</strong>
+        </div>
+        <div class="resource-list">
+          ${state.attachments.length ? renderAttachments(state.attachments) : renderAsideEmptyInline('暂无附件')}
+        </div>
+      </section>
+    </section>
   `;
+}
 
-  elements.tagCount.textContent = String(tags.length);
-  elements.noteTags.innerHTML = tags.length
-    ? tags
-        .map(
-          (tag) => `
-            <span class="pill" data-accent="true">
-              <span aria-hidden="true" style="width: 8px; height: 8px; border-radius: 999px; background: ${escapeHtml(tag.color || '#3c68ff')};"></span>
-              ${escapeHtml(tag.name)}
-            </span>
-          `
-        )
-        .join('')
-    : '';
+function renderOutlineTab() {
+  const headings = extractMarkdownHeadings(state.draftMarkdown || '');
+  return `
+    <section class="aside-panel-stack">
+      <section class="aside-card">
+        <div class="aside-card-header">
+          <span>正文大纲</span>
+          <strong>${headings.length}</strong>
+        </div>
+        <div class="outline-list">
+          ${headings.length
+            ? headings
+                .map(
+                  (heading) => `
+                    <button type="button" class="outline-item" data-outline-id="${escapeAttribute(heading.id)}" data-level="${heading.level}">
+                      <span>${escapeHtml(heading.title)}</span>
+                    </button>
+                  `
+                )
+                .join('')
+            : renderAsideEmptyInline('当前笔记还没有标题')}
+        </div>
+      </section>
+    </section>
+  `;
+}
 
-  elements.linkedCount.textContent = String(state.linkedNotes.length);
-  elements.linkedNotes.innerHTML = state.linkedNotes.length
-    ? state.linkedNotes
-        .map(
-          (linkedNote) => `
-            <div class="linked-row">
-              <button type="button" data-linked-id="${linkedNote.id}">
-                <div class="linked-meta">
-                  <strong>${escapeHtml(linkedNote.title)}</strong>
-                  <span>${escapeHtml(linkedNote.summary || linkedNote.plainText || '')}</span>
-                </div>
-              </button>
+function renderConceptsTab(note) {
+  return `
+    <section class="aside-panel-stack">
+      <section class="aside-card">
+        <div class="aside-card-header">
+          <span>知识点</span>
+          <strong>${escapeHtml(note.title)}</strong>
+        </div>
+        <div class="aside-placeholder">知识点面板将在 V1.4 后续迭代接入。</div>
+      </section>
+    </section>
+  `;
+}
+
+function renderAiTab(note) {
+  return `
+    <section class="aside-panel-stack">
+      <section class="aside-card">
+        <div class="aside-card-header">
+          <span>AI</span>
+          <strong>${escapeHtml(note.title)}</strong>
+        </div>
+        <div class="aside-placeholder">AI 辅助区将在右侧面板内继续扩展。</div>
+      </section>
+    </section>
+  `;
+}
+
+function renderTagPills(tags) {
+  return tags
+    .map(
+      (tag) => `
+        <span class="pill" data-accent="true">
+          <span aria-hidden="true" style="width: 8px; height: 8px; border-radius: 999px; background: ${escapeHtml(tag.color || '#3c68ff')};"></span>
+          ${escapeHtml(tag.name)}
+        </span>
+      `
+    )
+    .join('');
+}
+
+function renderLinkedNotes(linkedNotes) {
+  return linkedNotes
+    .map(
+      (linkedNote) => `
+        <div class="linked-row">
+          <button type="button" data-linked-id="${linkedNote.id}">
+            <div class="linked-meta">
+              <strong>${escapeHtml(linkedNote.title)}</strong>
+              <span>${escapeHtml(linkedNote.summary || linkedNote.plainText || '')}</span>
             </div>
-          `
-        )
-        .join('')
-    : '';
+          </button>
+        </div>
+      `
+    )
+    .join('');
+}
 
-  elements.attachmentCount.textContent = String(state.attachments.length);
-  elements.attachments.innerHTML = state.attachments.length
-    ? state.attachments
-        .map(
-          (attachment) => `
-            <div class="resource-row">
-              <button type="button" data-attachment-name="${escapeAttribute(attachment.fileName)}">
-                <div class="resource-meta">
-                  <strong>${escapeHtml(attachment.fileName)}</strong>
-                  <span>${escapeHtml(attachment.mimeType)}</span>
-                </div>
-              </button>
+function renderAttachments(attachments) {
+  return attachments
+    .map(
+      (attachment) => `
+        <div class="resource-row">
+          <button type="button" data-attachment-name="${escapeAttribute(attachment.fileName)}">
+            <div class="resource-meta">
+              <strong>${escapeHtml(attachment.fileName)}</strong>
+              <span>${escapeHtml(attachment.mimeType)}</span>
             </div>
-          `
-        )
-        .join('')
-    : '';
+          </button>
+        </div>
+      `
+    )
+    .join('');
+}
+
+function renderAsideEmptyInline(label) {
+  return `<div class="aside-empty-inline">${escapeHtml(label)}</div>`;
+}
+
+function getNoteStats(markdown) {
+  const normalized = typeof markdown === 'string' ? markdown : '';
+  const characterCount = normalized
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/`[^`]*`/g, ' ')
+    .replace(/!\[[^\]]*]\([^)]*\)/g, ' ')
+    .replace(/\[[^\]]*]\([^)]*\)/g, ' ')
+    .replace(/^>\s?/gm, '')
+    .replace(/^#{1,6}\s+/gm, '')
+    .replace(/[*_~\-|]/g, ' ')
+    .replace(/\s+/g, '')
+    .length;
+
+  return {
+    characterCount
+  };
+}
+
+function renderEditorContextMenu() {
+  if (!elements.editorContextMenu) {
+    return;
+  }
+
+  if (!state.editorContextMenu.open || !getCurrentNote() || state.view.showSourceEditor) {
+    elements.editorContextMenu.hidden = true;
+    elements.editorContextMenu.innerHTML = '';
+    return;
+  }
+
+  elements.editorContextMenu.hidden = false;
+  elements.editorContextMenu.innerHTML = `
+    <div class="editor-context-panel">
+      <div class="editor-context-action-row editor-context-action-row-primary">
+        ${editorContextPrimaryActions.map((action) => renderEditorContextIconButton(action)).join('')}
+      </div>
+      <div class="editor-context-action-row">
+        ${editorContextFormatActions.map((action) => renderEditorContextIconButton(action)).join('')}
+      </div>
+      <div class="editor-context-action-row editor-context-action-row-compact">
+        ${editorContextListActions.map((action) => renderEditorContextIconButton(action)).join('')}
+      </div>
+      <div class="editor-context-action-row editor-context-action-row-compact">
+        ${editorContextIndentActions.map((action) => renderEditorContextIconButton(action)).join('')}
+      </div>
+      <div class="editor-context-divider" aria-hidden="true"></div>
+      <div class="editor-context-submenu-group">
+        <button type="button" class="editor-context-submenu-trigger">
+          <span>标题</span>
+          <span class="editor-context-submenu-caret">▶</span>
+        </button>
+        <div class="editor-context-submenu">
+          ${editorContextParagraphItems.map((action) => renderEditorContextMenuItem(action)).join('')}
+        </div>
+      </div>
+      <div class="editor-context-submenu-group">
+        <button type="button" class="editor-context-submenu-trigger">
+          <span>插入</span>
+          <span class="editor-context-submenu-caret">▶</span>
+        </button>
+        <div class="editor-context-submenu">
+          ${editorContextInsertItems.map((action) => renderEditorContextMenuItem(action)).join('')}
+        </div>
+      </div>
+    </div>
+  `;
+  syncEditorContextMenuPosition();
+  syncEditorContextSubmenuLayout();
+}
+
+function renderEditorContextIconButton(action) {
+  const meta = editorContextActionMeta[action];
+  if (!meta) {
+    return '';
+  }
+
+  return `
+    <button
+      type="button"
+      class="editor-context-icon-button"
+      data-editor-context-action="${action}"
+      title="${escapeAttribute(meta.label)}"
+      aria-label="${escapeAttribute(meta.label)}"
+    >
+      ${renderEditorContextIconSvg(meta.icon)}
+    </button>
+  `;
+}
+
+function renderEditorContextMenuItem(action) {
+  const meta = editorContextActionMeta[action];
+  if (!meta) {
+    return '';
+  }
+
+  const shortcut = getEditorShortcutLabel(action);
+  return `
+    <button type="button" class="editor-context-menu-item" data-editor-context-action="${action}">
+      <span>${escapeHtml(meta.label)}</span>
+      ${shortcut ? `<span class="editor-context-shortcut">${escapeHtml(shortcut)}</span>` : ''}
+    </button>
+  `;
+}
+
+function renderEditorContextIcon(icon) {
+  return renderEditorContextIconSvg(icon);
+}
+
+
+function renderEditorContextIconSvg(icon) {
+  const strokeAttrs = 'fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"';
+  let content = '';
+  switch (icon) {
+    case 'cut':
+      content = `
+        <circle cx="8" cy="16" r="2.2" ${strokeAttrs}></circle>
+        <circle cx="16" cy="16" r="2.2" ${strokeAttrs}></circle>
+        <path d="M9.8 14.4 18 6.2" ${strokeAttrs}></path>
+        <path d="M14.2 14.4 6 6.2" ${strokeAttrs}></path>
+      `;
+      break;
+    case 'copy':
+      content = `
+        <rect x="8" y="7" width="9" height="11" rx="2.2" ${strokeAttrs}></rect>
+        <path d="M6.5 15.5H6A2 2 0 0 1 4 13.5V6a2 2 0 0 1 2-2h7.5" ${strokeAttrs}></path>
+      `;
+      break;
+    case 'paste':
+      content = `
+        <rect x="6.5" y="6.5" width="11" height="13" rx="2.2" ${strokeAttrs}></rect>
+        <path d="M9 6V4.8A1.8 1.8 0 0 1 10.8 3h2.4A1.8 1.8 0 0 1 15 4.8V6" ${strokeAttrs}></path>
+        <path d="M9 10h6M9 13h6M9 16h4.5" ${strokeAttrs}></path>
+      `;
+      break;
+    case 'delete':
+      content = `
+        <path d="M6.5 7.5h11" ${strokeAttrs}></path>
+        <path d="M8.2 7.5V6A2 2 0 0 1 10.2 4h3.6a2 2 0 0 1 2 2v1.5" ${strokeAttrs}></path>
+        <path d="M8.5 7.5 9 18a2 2 0 0 0 2 1.9h2a2 2 0 0 0 2-1.9l.5-10.5" ${strokeAttrs}></path>
+      `;
+      break;
+    case 'bold':
+      content = `
+        <path d="M8 5.5h4.5a3.2 3.2 0 1 1 0 6.4H8z" ${strokeAttrs}></path>
+        <path d="M8 11.9h5.3a3.4 3.4 0 1 1 0 6.8H8z" ${strokeAttrs}></path>
+      `;
+      break;
+    case 'italic':
+      content = `
+        <path d="M13.8 5.5h-4.4M14.6 18.5h-4.4M12.3 5.5 9.7 18.5" ${strokeAttrs}></path>
+      `;
+      break;
+    case 'codeblock':
+      content = `
+        <path d="M9.2 8.2 5.5 12l3.7 3.8M14.8 8.2 18.5 12l-3.7 3.8M12.9 7 11.1 17" ${strokeAttrs}></path>
+      `;
+      break;
+    case 'quote':
+      content = `
+        <path d="M7.8 10.2h3.4v3.1a3.2 3.2 0 0 1-3.2 3.2H7v-2.1h.6a1.1 1.1 0 0 0 1.1-1.1v-.8H7.8z" ${strokeAttrs}></path>
+        <path d="M13.5 10.2h3.4v3.1a3.2 3.2 0 0 1-3.2 3.2h-1v-2.1h.6a1.1 1.1 0 0 0 1.1-1.1v-.8h-.9z" ${strokeAttrs}></path>
+      `;
+      break;
+    case 'ordered':
+      content = `
+        <path d="M9.5 7.5h8M9.5 12h8M9.5 16.5h8M5.8 8.2V6.4l-1 .7M4.8 12.2c.3-.7.8-1.1 1.5-1.1.8 0 1.5.6 1.5 1.4 0 .7-.4 1.1-1 1.5l-1.8 1.2h2.9" ${strokeAttrs}></path>
+      `;
+      break;
+    case 'bullet':
+      content = `
+        <circle cx="6.2" cy="7.8" r="1.1" fill="currentColor"></circle>
+        <circle cx="6.2" cy="12" r="1.1" fill="currentColor"></circle>
+        <circle cx="6.2" cy="16.2" r="1.1" fill="currentColor"></circle>
+        <path d="M9.5 7.8h8M9.5 12h8M9.5 16.2h8" ${strokeAttrs}></path>
+      `;
+      break;
+    case 'task-list':
+      content = `
+        <path d="M5.3 8.1 6.8 9.6l2.4-2.8M10.5 8h7M5.3 12.3 6.8 13.8l2.4-2.8M10.5 12.2h7M5.3 16.5 6.8 18l2.4-2.8M10.5 16.4h7" ${strokeAttrs}></path>
+      `;
+      break;
+    case 'outdent':
+      content = `
+        <path d="M10.5 7.8h7M10.5 12h7M10.5 16.2h7M4.8 12h4.4M7 9.8 4.8 12 7 14.2" ${strokeAttrs}></path>
+      `;
+      break;
+    case 'indent':
+      content = `
+        <path d="M6.5 7.8h7M6.5 12h7M6.5 16.2h7M14.8 12h4.4M17 9.8l2.2 2.2-2.2 2.2" ${strokeAttrs}></path>
+      `;
+      break;
+    default:
+      content = `<text x="12" y="14" text-anchor="middle" font-size="9" font-weight="600" fill="currentColor">${escapeHtml(icon || '')}</text>`;
+      break;
+  }
+
+  return `
+    <span class="editor-context-glyph" aria-hidden="true">
+      <svg viewBox="0 0 24 24" focusable="false">
+        ${content}
+      </svg>
+    </span>
+  `;
+}
+
+function syncEditorContextSubmenuLayout() {
+  if (!elements.editorContextMenu || elements.editorContextMenu.hidden) {
+    return;
+  }
+
+  const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0;
+  const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+  const submenuGroups = elements.editorContextMenu.querySelectorAll('.editor-context-submenu-group');
+  submenuGroups.forEach((submenuGroup) => {
+    const trigger = submenuGroup.querySelector('.editor-context-submenu-trigger');
+    const submenu = submenuGroup.querySelector('.editor-context-submenu');
+    if (!trigger || !submenu) {
+      return;
+    }
+
+    submenuGroup.dataset.submenuSide = 'right';
+    submenuGroup.dataset.submenuAlign = 'top';
+    submenuGroup.style.setProperty('--submenu-offset-y', '-8px');
+
+    const previousDisplay = submenu.style.display;
+    const previousVisibility = submenu.style.visibility;
+    submenu.style.display = 'grid';
+    submenu.style.visibility = 'hidden';
+
+    const triggerRect = trigger.getBoundingClientRect();
+    const submenuRect = submenu.getBoundingClientRect();
+    const fitsRight = triggerRect.right + submenuRect.width - 4 <= viewportWidth - 12;
+    submenuGroup.dataset.submenuSide = fitsRight ? 'right' : 'left';
+
+    let offsetY = -8;
+    if (triggerRect.top + offsetY < 12) {
+      offsetY = 12 - triggerRect.top;
+    }
+    if (triggerRect.top + offsetY + submenuRect.height > viewportHeight - 12) {
+      offsetY = viewportHeight - 12 - triggerRect.top - submenuRect.height;
+      submenuGroup.dataset.submenuAlign = 'bottom';
+    }
+    submenuGroup.style.setProperty('--submenu-offset-y', `${Math.round(offsetY)}px`);
+
+    submenu.style.display = previousDisplay;
+    submenu.style.visibility = previousVisibility;
+  });
+}
+
+function openEditorContextMenu({ x, y }) {
+  state.editorContextMenu.open = true;
+  state.editorContextMenu.x = x;
+  state.editorContextMenu.y = y;
+  state.editorMenuOpen = null;
+  closeContextMenu();
+  closeSectionMenu();
+  closeTabMenu();
+  renderEditorMenuBar();
+  renderEditorContextMenu();
+}
+
+function closeEditorContextMenu() {
+  if (!state.editorContextMenu.open) {
+    return;
+  }
+
+  state.editorContextMenu.open = false;
+  renderEditorContextMenu();
+}
+
+async function handleEditorContextMenuAction(action) {
+  closeEditorContextMenu();
+
+  const note = getCurrentNote();
+  if (!note) {
+    flashStatus('请先选择一篇笔记');
+    return;
+  }
+
+  if (!currentEditorHost) {
+    flashStatus('编辑器尚未就绪');
+    return;
+  }
+
+  if (editorContextPrimaryActions.includes(action)) {
+    await handleEditMenuAction(action);
+    return;
+  }
+
+  await currentEditorHost.run(action);
+  await currentEditorHost.focus();
+}
+
+function buildFolderPath(folderId) {
+  if (!folderId) {
+    return '资料 / 未分类';
+  }
+
+  const segments = [];
+  let currentFolder = state.foldersById[folderId] ?? null;
+
+  while (currentFolder) {
+    segments.unshift(currentFolder.name);
+    currentFolder = currentFolder.parentId ? state.foldersById[currentFolder.parentId] ?? null : null;
+  }
+
+  return segments.length ? `资料 / ${segments.join(' / ')}` : '资料 / 未分类';
 }
 
 function renderStatus() {
@@ -2240,6 +2767,7 @@ async function handleViewMenuAction(action) {
 
 async function handleEditMenuAction(action) {
   closeEditorMenuBar();
+  closeEditorContextMenu();
 
   const note = getCurrentNote();
   if (!note) {
@@ -2257,6 +2785,7 @@ async function handleEditMenuAction(action) {
   switch (action) {
     case 'cut':
     case 'copy':
+    case 'delete':
     case 'select-all': {
       await focusEditor();
       const command = action === 'select-all' ? 'selectAll' : action;
@@ -2344,7 +2873,7 @@ async function handleEditorPanelAction(action) {
         flashStatus(`未找到：${query}`);
         return;
       }
-      flashStatus(`已查找 ${result.index + 1}/${result.count}：${query}`);
+      flashStatus(`宸叉煡鎵?${result.index + 1}/${result.count}锛?{query}`);
       return;
     }
 
@@ -2362,7 +2891,7 @@ async function handleEditorPanelAction(action) {
         await editorHost.focus();
       }
       scheduleAutosave();
-      flashStatus(`已替换：${query}`);
+      flashStatus(`宸叉浛鎹細${query}`);
       renderEditorPanel();
       return;
     }
@@ -2382,7 +2911,7 @@ async function handleEditorPanelAction(action) {
       await editorHost.focus();
     }
     scheduleAutosave();
-    flashStatus(`已全部替换：${query}`);
+    flashStatus(`宸插叏閮ㄦ浛鎹細${query}`);
     renderEditorPanel();
   }
 }
@@ -3010,7 +3539,7 @@ async function selectFolder(folderId) {
     state.attachments = [];
     state.draftMarkdown = '';
     renderAll();
-    flashStatus(`已切换到目录：${state.foldersById[folderId]?.name ?? ''}`);
+    flashStatus(`宸插垏鎹㈠埌鐩綍锛?{state.foldersById[folderId]?.name ?? ''}`);
     return;
   }
 
@@ -3023,7 +3552,7 @@ async function selectFolder(folderId) {
   }
 
   renderAll();
-  flashStatus(`已切换到目录：${state.foldersById[folderId]?.name ?? ''}`);
+  flashStatus(`宸插垏鎹㈠埌鐩綍锛?{state.foldersById[folderId]?.name ?? ''}`);
 }
 
 async function selectNote(noteId, { syncFolder = false, ensureTab = true } = {}) {
@@ -3048,7 +3577,7 @@ async function selectNote(noteId, { syncFolder = false, ensureTab = true } = {})
 
   await loadCurrentNoteSideData();
   renderAll();
-  flashStatus(`已切换到：${note.title}`);
+  flashStatus(`宸插垏鎹㈠埌锛?{note.title}`);
 }
 
 function toggleFolderOpen(folderId) {
@@ -3180,14 +3709,14 @@ async function handleTabMenuAction(action) {
     if (notePath && navigator?.clipboard?.writeText) {
       try {
         await navigator.clipboard.writeText(notePath);
-        flashStatus('\u5df2\u590d\u5236\u7b14\u8bb0\u8def\u5f84');
+        flashStatus('已复制笔记路径');
         return;
       } catch (error) {
         // Fall through to status feedback below.
       }
     }
 
-    flashStatus(notePath || '\u672a\u627e\u5230\u7b14\u8bb0\u8def\u5f84');
+    flashStatus(notePath || '未找到笔记路径');
   }
 }
 
@@ -3402,7 +3931,7 @@ async function duplicateCurrentNote(note) {
     await refreshKnowledgeData();
     await loadCurrentNoteSideData();
     renderAll();
-    flashStatus(`已另存为：${nextTitle}`);
+    flashStatus(`宸插彟瀛樹负锛?{nextTitle}`);
     return;
   }
 
@@ -3418,7 +3947,7 @@ async function duplicateCurrentNote(note) {
   state.selectedNoteId = nextNote.id;
   state.openNoteTabs = ensureOpenTab(state.openNoteTabs, nextNote.id);
   syncLocalWorkspace();
-  flashStatus(`已另存为：${nextTitle}`);
+  flashStatus(`宸插彟瀛樹负锛?{nextTitle}`);
 }
 
 function exportCurrentNoteAsMarkdown(note) {
@@ -3428,7 +3957,7 @@ function exportCurrentNoteAsMarkdown(note) {
 
   const fileName = buildExportFileName(note.title, 'md');
   triggerFileDownload(fileName, state.draftMarkdown || note.rawMarkdown, 'text/markdown;charset=utf-8');
-  flashStatus(`已导出：${fileName}`);
+  flashStatus(`宸插鍑猴細${fileName}`);
 }
 
 function exportCurrentNoteAsPdf(note) {
@@ -3777,6 +4306,27 @@ function mountEditorHost(noteId, markdown) {
     pendingEditorNoteId = null;
     flashStatus(error.message || '编辑器加载失败');
   });
+}
+
+function syncEditorContextMenuPosition() {
+  if (!elements.editorContextMenu || elements.editorContextMenu.hidden) {
+    return;
+  }
+
+  const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0;
+  const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+  const panel = elements.editorContextMenu.querySelector('.editor-context-panel');
+  if (!panel) {
+    elements.editorContextMenu.style.left = `${state.editorContextMenu.x}px`;
+    elements.editorContextMenu.style.top = `${state.editorContextMenu.y}px`;
+    return;
+  }
+
+  const panelRect = panel.getBoundingClientRect();
+  const clampedX = Math.min(Math.max(8, state.editorContextMenu.x), Math.max(8, viewportWidth - panelRect.width - 8));
+  const clampedY = Math.min(Math.max(8, state.editorContextMenu.y), Math.max(8, viewportHeight - panelRect.height - 8));
+  elements.editorContextMenu.style.left = `${Math.round(clampedX)}px`;
+  elements.editorContextMenu.style.top = `${Math.round(clampedY)}px`;
 }
 
 function handleEditorMarkdownChange(markdown) {

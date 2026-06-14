@@ -31,6 +31,7 @@ assert.match(
   /renderEditorMenuItem\(\{[\s\S]*actionAttr: 'data-format-menu-action'/,
   'editor format menu should render actionable format menu items'
 );
+
 const formatButtonsMatch = clientJs.match(/const formatButtons = \[([\s\S]*?)\];/);
 assert.ok(formatButtonsMatch, 'editor format button definitions should exist');
 assert.doesNotMatch(
@@ -63,13 +64,11 @@ assert.match(
   /\.editor-find-match-active/,
   'active find matches should have a dedicated highlight style'
 );
-
 assert.match(
   clientJs,
-  /label: '鍐呴儴閾炬帴'/,
+  /label: '内部链接'/,
   'editor format menu should expose an internal link action'
 );
-
 assert.match(
   milkdownEntry,
   /'internal-link': \(\) => \(\{ key: insertInternalLinkCommand\.key \}\)/,

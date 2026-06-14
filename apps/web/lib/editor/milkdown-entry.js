@@ -273,6 +273,33 @@ async function handleOutdentShortcut(editor) {
   return true;
 }
 
+async function insertParagraphNearSelection(editor, direction) {
+  const view = editor.ctx.get(editorViewCtx);
+  const schema = editor.ctx.get(schemaCtx);
+  const paragraphNodeType = getNodeFromSchema('paragraph', schema);
+  if (!paragraphNodeType) {
+    return false;
+  }
+
+  const { $from } = view.state.selection;
+  let textblockDepth = $from.depth;
+  while (textblockDepth > 0 && !$from.node(textblockDepth).isTextblock) {
+    textblockDepth -= 1;
+  }
+
+  if (textblockDepth <= 0) {
+    return false;
+  }
+
+  const insertPos = direction === 'above'
+    ? $from.before(textblockDepth)
+    : $from.after(textblockDepth);
+  const tr = view.state.tr.insert(insertPos, paragraphNodeType.create());
+  tr.setSelection(TextSelection.create(tr.doc, insertPos + 1));
+  view.dispatch(tr.scrollIntoView());
+  return true;
+}
+
 function normalizeMarkdown(markdown) {
   return typeof markdown === 'string' ? markdown : '';
 }
@@ -584,6 +611,12 @@ export class MilkdownHost {
   async run(commandKey) {
     await this.ready;
     const view = this.editor.ctx.get(editorViewCtx);
+    if (commandKey === 'paragraph-above') {
+      return insertParagraphNearSelection(this.editor, 'above');
+    }
+    if (commandKey === 'paragraph-below') {
+      return insertParagraphNearSelection(this.editor, 'below');
+    }
     if (commandKey === 'indent') {
       return handleIndentShortcut(this.editor);
     }
