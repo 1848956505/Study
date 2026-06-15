@@ -26,6 +26,7 @@ import {
   insertHrCommand
 } from '@milkdown/preset-commonmark';
 import { gfm, toggleStrikethroughCommand, insertTableCommand } from '@milkdown/preset-gfm';
+import { imageBlockComponent, imageBlockConfig, defaultImageBlockConfig } from '@milkdown/kit/component/image-block';
 import { $command, $prose, callCommand, getMarkdown, replaceAll } from '@milkdown/utils';
 import { resolveEnterBehavior, shouldKeepTrailingBlank } from './enter-behavior.js';
 import { resolveMatchNavigationIndex } from './find-navigation.js';
@@ -49,20 +50,21 @@ const insertLinkCommand = $command('InsertLink', (ctx) => () => (state, dispatch
   return true;
 });
 
-const insertImageCommand = $command('InsertImage', (ctx) => () => (state, dispatch) => {
-  const { selection } = state;
-  const { $from, $to, empty } = selection;
+const insertImageBlockCommand = $command('InsertImage', (ctx) => () => (state, dispatch) => {
+  const schema = ctx.get(schemaCtx);
+  const imageBlockNodeType = getNodeFromSchema('image-block', schema);
 
-  const altText = empty ? 'image' : state.doc.textBetween($from.pos, $to.pos);
-  const markdown = `![${altText}](https://)`;
+  if (!imageBlockNodeType) {
+    return false;
+  }
 
-  const tr = empty
-    ? state.tr.insertText(markdown, $from.pos)
-    : state.tr.replaceWith($from.pos, $to.pos, state.schema.text(markdown));
+  const node = imageBlockNodeType.create({
+    src: '',
+    caption: '',
+    ratio: 1
+  });
 
-  const urlStart = empty ? $from.pos + altText.length + 4 : $from.pos + altText.length + 4;
-  const urlEnd = urlStart + 7;
-  tr.setSelection(TextSelection.create(tr.doc, urlStart, urlEnd));
+  const tr = state.tr.replaceSelectionWith(node, false);
   dispatch(tr.scrollIntoView());
   return true;
 });
@@ -127,7 +129,7 @@ const commandResolvers = {
   'task-list': () => ({ key: turnIntoTaskListCommand.key }),
   strikethrough: () => ({ key: toggleStrikethroughCommand.key }),
   link: () => ({ key: insertLinkCommand.key }),
-  image: () => ({ key: insertImageCommand.key }),
+  image: () => ({ key: insertImageBlockCommand.key }),
   'internal-link': () => ({ key: insertInternalLinkCommand.key }),
   table: () => ({ key: insertTableCommand.key, payload: { row: 3, col: 3 } }),
   undo: () => ({ key: undoCommand.key }),
@@ -562,14 +564,18 @@ const findHighlightBehavior = $prose(() => new Plugin({
 }));
 
 export class MilkdownHost {
-  constructor({ root, markdown = '', onChange } = {}) {
+  constructor({ root, markdown = '', onChange, noteId = null } = {}) {
     if (!(root instanceof HTMLElement)) {
       throw new Error('MilkdownHost requires a valid root element.');
     }
 
     this.root = root;
     this.onChange = typeof onChange === 'function' ? onChange : null;
+    this.noteId = typeof noteId === 'string' && noteId.trim() ? noteId.trim() : null;
     this.editor = null;
+    this.imageLayoutObserver = null;
+    this.imageLayoutRefreshFrame = 0;
+    this.imageLayoutLastWidth = 0;
     this.ready = this.mount(normalizeMarkdown(markdown));
   }
 
@@ -580,6 +586,10 @@ export class MilkdownHost {
       .config((ctx) => {
         ctx.set(rootCtx, host.root);
         ctx.set(defaultValueCtx, markdown);
+        ctx.set(imageBlockConfig.key, {
+          ...defaultImageBlockConfig,
+          onUpload: async (file) => host.uploadAttachmentImage(file)
+        });
         ctx.get(listenerCtx).markdownUpdated((listenerCtxValue, nextMarkdown) => {
           host.onChange?.(nextMarkdown, listenerCtxValue);
         });
@@ -590,11 +600,18 @@ export class MilkdownHost {
       .use(markdownPasteBehavior)
       .use(clipboard)
       .use(gfm)
+      .use(insertLinkCommand)
+      .use(insertImageBlockCommand)
+      .use(insertInternalLinkCommand)
+      .use(turnIntoTaskListCommand)
+      .use(imageBlockComponent)
       .use(enhancedEnterBehavior)
       .use(findHighlightBehavior);
 
     await this.editor.create();
     this.root.dataset.editorReady = 'true';
+    this.attachImageLayoutObserver();
+    this.scheduleImageLayoutRefresh();
     return this;
   }
 
@@ -651,6 +668,106 @@ export class MilkdownHost {
     await this.ready;
     const view = this.editor.ctx.get(editorViewCtx);
     view.focus();
+  }
+
+  attachImageLayoutObserver() {
+    if (typeof ResizeObserver === 'undefined') {
+      return;
+    }
+
+    this.disconnectImageLayoutObserver();
+    const observedWidth = Math.round(this.root.getBoundingClientRect().width);
+    this.imageLayoutLastWidth = observedWidth > 0 ? observedWidth : 0;
+
+    this.imageLayoutObserver = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (!entry) {
+        return;
+      }
+
+      const width = Math.round(entry.contentRect.width);
+      if (width <= 0 || width === this.imageLayoutLastWidth) {
+        return;
+      }
+
+      this.imageLayoutLastWidth = width;
+      this.scheduleImageLayoutRefresh();
+    });
+
+    this.imageLayoutObserver.observe(this.root);
+  }
+
+  disconnectImageLayoutObserver() {
+    if (this.imageLayoutRefreshFrame) {
+      window.cancelAnimationFrame(this.imageLayoutRefreshFrame);
+      this.imageLayoutRefreshFrame = 0;
+    }
+
+    if (this.imageLayoutObserver) {
+      this.imageLayoutObserver.disconnect();
+      this.imageLayoutObserver = null;
+    }
+  }
+
+  scheduleImageLayoutRefresh() {
+    if (this.imageLayoutRefreshFrame) {
+      return;
+    }
+
+    this.imageLayoutRefreshFrame = window.requestAnimationFrame(() => {
+      this.imageLayoutRefreshFrame = 0;
+      this.refreshImageBlockLayouts();
+    });
+  }
+
+  refreshImageBlockLayouts() {
+    const images = this.root.querySelectorAll('.milkdown-image-block img[src]');
+    images.forEach((image) => {
+      if (!(image instanceof HTMLImageElement)) {
+        return;
+      }
+
+      if (!image.complete || image.naturalWidth <= 0) {
+        return;
+      }
+
+      image.dispatchEvent(new Event('load'));
+    });
+  }
+
+  async uploadAttachmentImage(file) {
+    if (!(file instanceof File)) {
+      throw new Error('Image upload requires a file');
+    }
+    if (!this.noteId) {
+      throw new Error('Please select a note before uploading images');
+    }
+
+    const contentBase64 = await fileToBase64(file);
+    const response = await fetch('/api/storage/attachments', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        noteId: this.noteId,
+        fileName: file.name || 'image.png',
+        mimeType: file.type || 'image/png',
+        contentBase64
+      })
+    });
+
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(payload.error || '上传图片失败');
+    }
+
+    const attachmentId = payload?.data?.id;
+    if (!attachmentId) {
+      throw new Error('上传图片失败：未返回附件 ID');
+    }
+
+    return `/api/storage/attachments/${encodeURIComponent(attachmentId)}/content`;
   }
 
   async pasteMarkdown(markdown) {
@@ -761,6 +878,7 @@ export class MilkdownHost {
     }
 
     await this.ready;
+    this.disconnectImageLayoutObserver();
     await this.editor.destroy();
     this.root.dataset.editorReady = 'false';
     this.editor = null;
@@ -769,6 +887,24 @@ export class MilkdownHost {
 
 export function createMilkdownHost(options) {
   return new MilkdownHost(options);
+}
+
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result;
+      if (typeof result !== 'string') {
+        reject(new Error('Failed to read image file'));
+        return;
+      }
+
+      const commaIndex = result.indexOf(',');
+      resolve(commaIndex === -1 ? result : result.slice(commaIndex + 1));
+    };
+    reader.onerror = () => reject(reader.error ?? new Error('Failed to read image file'));
+    reader.readAsDataURL(file);
+  });
 }
 
 function collectDocumentTextMatches(doc, needle) {

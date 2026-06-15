@@ -2051,6 +2051,154 @@ body {
   color: inherit;
 }
 
+.milkdown-host .milkdown-image-block {
+  display: grid;
+  gap: 12px;
+  margin: 1.2rem 0;
+  max-width: 100%;
+}
+
+.milkdown-host .milkdown-image-block.selected .image-wrapper {
+  outline: 2px solid rgba(60, 104, 255, 0.24);
+  outline-offset: 4px;
+}
+
+.milkdown-host .milkdown-image-block .image-edit {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+  width: 100%;
+  padding: 14px 16px;
+  border: 1px dashed rgba(60, 104, 255, 0.22);
+  border-radius: 16px;
+  background: rgba(60, 104, 255, 0.04);
+}
+
+.milkdown-host .milkdown-image-block .image-icon {
+  width: 32px;
+  height: 32px;
+  color: var(--color-accent-strong);
+}
+
+.milkdown-host .milkdown-image-block .link-importer {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.milkdown-host .milkdown-image-block .link-importer.focus .link-input-area {
+  border-color: rgba(60, 104, 255, 0.28);
+  box-shadow: 0 0 0 3px rgba(60, 104, 255, 0.08);
+}
+
+.milkdown-host .milkdown-image-block .link-input-area {
+  width: 100%;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.88);
+  color: var(--color-text);
+  outline: none;
+}
+
+.milkdown-host .milkdown-image-block .link-input-area:focus {
+  border-color: rgba(60, 104, 255, 0.28);
+  box-shadow: 0 0 0 3px rgba(60, 104, 255, 0.08);
+}
+
+.milkdown-host .milkdown-image-block .placeholder {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  color: var(--color-text-muted);
+}
+
+.milkdown-host .milkdown-image-block .placeholder .hidden {
+  display: none;
+}
+
+.milkdown-host .milkdown-image-block .uploader,
+.milkdown-host .milkdown-image-block .confirm {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 36px;
+  min-height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.88);
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.milkdown-host .milkdown-image-block .uploader:hover,
+.milkdown-host .milkdown-image-block .confirm:hover {
+  border-color: rgba(60, 104, 255, 0.28);
+  color: var(--color-accent-strong);
+}
+
+.milkdown-host .milkdown-image-block .image-preview {
+  display: grid;
+  justify-items: center;
+  padding: 10px 0 0;
+}
+
+.milkdown-host .milkdown-image-block .image-preview img {
+  max-width: 100%;
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+}
+
+.milkdown-host .milkdown-image-block .image-wrapper {
+  position: relative;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: stretch;
+  max-width: 100%;
+}
+
+.milkdown-host .milkdown-image-block .image-wrapper > img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+  background: #fff;
+}
+
+.milkdown-host .milkdown-image-block .image-resize-handle {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  border: 2px solid #fff;
+  background: linear-gradient(135deg, #1d4ed8, #5f72ff);
+  box-shadow: 0 8px 18px rgba(29, 78, 216, 0.26);
+  cursor: nwse-resize;
+}
+
+.milkdown-host .milkdown-image-block .caption-input {
+  width: 100%;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.88);
+  color: var(--color-text);
+  outline: none;
+}
+
+.milkdown-host .milkdown-image-block .caption-input:focus {
+  border-color: rgba(60, 104, 255, 0.28);
+  box-shadow: 0 0 0 3px rgba(60, 104, 255, 0.08);
+}
+
 .preview-frame {
   min-height: 100%;
   padding: 0;

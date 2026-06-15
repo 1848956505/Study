@@ -73,6 +73,7 @@ const editorContextParagraphItems = [
 ];
 const editorContextInsertItems = [
   'hr',
+  'image',
   'codeblock',
   'quote',
   'paragraph-above',
@@ -101,7 +102,8 @@ const editorContextActionMeta = {
   'heading-6': { label: 'H6' },
   hr: { label: '水平分割线' },
   'paragraph-above': { label: '段落（上方）' },
-  'paragraph-below': { label: '段落（下方）' }
+  'paragraph-below': { label: '段落（下方）' },
+  image: { label: '图片' }
 };
 
 const state = {
@@ -203,6 +205,7 @@ const railItems = [
 
 const formatButtons = [
   { key: 'internal-link', label: '内部链接' },
+  { key: 'image', label: '图片' },
   { key: 'bold', label: '加粗' },
   { key: 'italic', label: '斜体' },
   { key: 'quote', label: '引用' },
@@ -717,7 +720,7 @@ function bindEvents() {
     if (!formatButton) {
       return;
     }
-    handleFormat(formatButton.dataset.format);
+    void handleFormat(formatButton.dataset.format);
   });
 
   document.addEventListener('click', (event) => {
@@ -2991,12 +2994,13 @@ function renderStatus() {
   }
 }
 
-function handleFormat(format) {
+async function handleFormat(format) {
   if (!currentEditorHost) {
     return;
   }
-  void currentEditorHost.run(format);
-  void currentEditorHost.focus();
+
+  await currentEditorHost.run(format);
+  await currentEditorHost.focus();
 }
 
 function shouldHandleEditorShortcut(event) {
@@ -3040,8 +3044,8 @@ async function handleParagraphMenuAction(action) {
     return;
   }
 
-  void currentEditorHost.run(action);
-  void currentEditorHost.focus();
+  await currentEditorHost.run(action);
+  await currentEditorHost.focus();
 }
 
 async function handleFormatMenuAction(action) {
@@ -3058,8 +3062,8 @@ async function handleFormatMenuAction(action) {
     return;
   }
 
-  void currentEditorHost.run(action);
-  void currentEditorHost.focus();
+  await currentEditorHost.run(action);
+  await currentEditorHost.focus();
 }
 
 async function handleViewMenuAction(action) {
@@ -4629,6 +4633,7 @@ function mountEditorHost(noteId, markdown) {
     const host = createMilkdownHost({
       root,
       markdown,
+      noteId,
       onChange: handleEditorMarkdownChange
     });
 

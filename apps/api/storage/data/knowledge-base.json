@@ -228,7 +228,7 @@
       "spaceId": "space-demo",
       "folderId": "folder-test-1780743955788",
       "title": "test",
-      "rawMarkdown": "# test\n\n",
+      "rawMarkdown": "# test\n",
       "plainText": "test",
       "internalLinks": [],
       "status": "draft",
@@ -237,7 +237,7 @@
       "deleted": false,
       "tagIds": [],
       "createdAt": "2026-06-12T13:35:45.814Z",
-      "updatedAt": "2026-06-15T09:13:30.816Z"
+      "updatedAt": "2026-06-15T13:22:30.689Z"
     },
     {
       "id": "note-item-1781343964905",

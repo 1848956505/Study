@@ -58,8 +58,8 @@ assert.match(
 );
 assert.match(
   clientJs,
-  /const editorContextInsertItems = \[[\s\S]*hr[\s\S]*codeblock[\s\S]*quote[\s\S]*paragraph-above[\s\S]*paragraph-below[\s\S]*\];/,
-  'insert submenu should expose divider, code block, quote, and paragraph insertion actions'
+  /const editorContextInsertItems = \[[\s\S]*hr[\s\S]*image[\s\S]*codeblock[\s\S]*quote[\s\S]*paragraph-above[\s\S]*paragraph-below[\s\S]*\];/,
+  'insert submenu should expose image, divider, code block, quote, and paragraph insertion actions'
 );
 assert.match(
   clientJs,
