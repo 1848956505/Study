@@ -26,6 +26,17 @@ import {
   insertHrCommand
 } from '@milkdown/preset-commonmark';
 import { gfm, toggleStrikethroughCommand, insertTableCommand } from '@milkdown/preset-gfm';
+import {
+  addColAfterCommand,
+  addColBeforeCommand,
+  addRowAfterCommand,
+  addRowBeforeCommand,
+  deleteSelectedCellsCommand,
+  selectColCommand,
+  selectRowCommand,
+  setAlignCommand
+} from '@milkdown/preset-gfm';
+import { tableBlock, tableBlockConfig } from '@milkdown/components/table-block';
 import { imageBlockComponent, imageBlockConfig, defaultImageBlockConfig } from '@milkdown/kit/component/image-block';
 import { $command, $prose, callCommand, getMarkdown, replaceAll } from '@milkdown/utils';
 import { resolveEnterBehavior, shouldKeepTrailingBlank } from './enter-behavior.js';
@@ -110,6 +121,744 @@ const turnIntoTaskListCommand = $command('TurnIntoTaskList', (ctx) => () => (sta
   return true;
 });
 
+function normalizeTableDimension(value, fallback) {
+  const parsed = Number.parseInt(String(value ?? ''), 10);
+  if (!Number.isFinite(parsed)) {
+    return fallback;
+  }
+
+  return Math.min(20, Math.max(1, parsed));
+}
+
+function renderTableButton(renderType) {
+  switch (renderType) {
+    case 'add_row':
+    case 'add_col':
+      return '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3v10"></path><path d="M3 8h10"></path></svg>';
+    case 'add_row_before':
+      return '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.8v4.6"></path><path d="M5.7 5.1h4.6"></path><path d="M3 10.8h10"></path><path d="M3 13h10"></path></svg>';
+    case 'add_row_after':
+      return '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 8.6v4.6"></path><path d="M5.7 10.9h4.6"></path><path d="M3 3h10"></path><path d="M3 5.2h10"></path></svg>';
+    case 'add_col_before':
+      return '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.8 8h4.6"></path><path d="M5.1 5.7v4.6"></path><path d="M10.8 3v10"></path><path d="M13 3v10"></path></svg>';
+    case 'add_col_after':
+      return '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8.6 8h4.6"></path><path d="M10.9 5.7v4.6"></path><path d="M3 3v10"></path><path d="M5.2 3v10"></path></svg>';
+    case 'delete_row':
+    case 'delete_col':
+      return '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5.2 5.5h5.6"></path><path d="M6 5.5V4.6h4v.9"></path><path d="M6.3 6.5l.3 4.5h2.8l.3-4.5"></path></svg>';
+    case 'align_col_left':
+      return '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 4h10"></path><path d="M3 8h7"></path><path d="M3 12h9"></path></svg>';
+    case 'align_col_center':
+      return '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 4h10"></path><path d="M4.5 8h7"></path><path d="M3.5 12h9"></path></svg>';
+    case 'align_col_right':
+      return '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 4h10"></path><path d="M6 8h7"></path><path d="M4 12h9"></path></svg>';
+    case 'col_drag_handle':
+      return '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4.5h11"></path><path d="M2.5 8h11"></path><path d="M2.5 11.5h11"></path></svg>';
+    case 'row_drag_handle':
+      return '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 2.5v11"></path><path d="M8 2.5v11"></path><path d="M11.5 2.5v11"></path></svg>';
+    default:
+      return '';
+  }
+}
+
+function createTableHandleActionButton({ action, icon, label, onActivate }) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.dataset.tablePinnedAction = action;
+  if (action === 'table-delete-row' || action === 'table-delete-col') {
+    button.dataset.tablePinnedDanger = 'true';
+  }
+  button.innerHTML = renderTableButton(icon);
+  button.setAttribute('title', label);
+  button.setAttribute('aria-label', label);
+  button.addEventListener('pointerdown', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+  });
+  button.addEventListener('click', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (button.disabled || button.getAttribute('aria-disabled') === 'true') {
+      return;
+    }
+    void onActivate?.();
+  });
+  return button;
+}
+
+function ensureTablePinnedButtons(group, descriptors, onActivate) {
+  if (!(group instanceof HTMLElement)) {
+    return;
+  }
+
+  descriptors
+    .slice()
+    .reverse()
+    .forEach((descriptor) => {
+      const selector = `[data-table-pinned-action="${descriptor.action}"]`;
+      if (group.querySelector(selector)) {
+        return;
+      }
+
+      const button = createTableHandleActionButton({
+        ...descriptor,
+        onActivate: () => onActivate?.(descriptor)
+      });
+      group.prepend(button);
+    });
+}
+
+function syncTableHandleLabels(root, host = null) {
+  if (!(root instanceof HTMLElement)) {
+    return;
+  }
+
+  const setButtonLabel = (button, label) => {
+    if (!(button instanceof HTMLElement)) {
+      return;
+    }
+
+    button.setAttribute('title', label);
+    button.setAttribute('aria-label', label);
+  };
+
+  const hideBuiltinDeleteButton = (button) => {
+    if (!(button instanceof HTMLElement)) {
+      return;
+    }
+
+    button.dataset.tableBuiltinDelete = 'true';
+    button.tabIndex = -1;
+    button.setAttribute('aria-hidden', 'true');
+    button.style.display = 'none';
+  };
+
+  root.querySelectorAll('.milkdown-table-block').forEach((tableBlockRoot) => {
+    const colHandle = tableBlockRoot.querySelector('[data-role="col-drag-handle"]');
+    if (colHandle instanceof HTMLElement) {
+      colHandle.setAttribute('title', '选中整列');
+      colHandle.setAttribute('aria-label', '选中整列');
+      const buttonGroup = colHandle.querySelector('.button-group');
+      ensureTablePinnedButtons(
+        buttonGroup,
+        [
+          { action: 'table-add-col-before', icon: 'add_col_before', label: '左侧插列', kind: 'col' },
+          { action: 'table-add-col-after', icon: 'add_col_after', label: '右侧插列', kind: 'col' },
+          { action: 'table-delete-col', icon: 'delete_col', label: '删除列', kind: 'col' }
+        ],
+        ({ action, kind }) => host?.tableHandleController?.runPinnedAction(kind, action)
+      );
+      const builtinButtons = Array.from(colHandle.querySelectorAll('.button-group button:not([data-table-pinned-action])'));
+      setButtonLabel(builtinButtons[0], '左对齐');
+      setButtonLabel(builtinButtons[1], '居中对齐');
+      setButtonLabel(builtinButtons[2], '右对齐');
+      setButtonLabel(builtinButtons[3], '删除列');
+      hideBuiltinDeleteButton(builtinButtons[3]);
+    }
+
+    const rowHandle = tableBlockRoot.querySelector('[data-role="row-drag-handle"]');
+    if (rowHandle instanceof HTMLElement) {
+      rowHandle.setAttribute('title', '选中整行');
+      rowHandle.setAttribute('aria-label', '选中整行');
+      const buttonGroup = rowHandle.querySelector('.button-group');
+      ensureTablePinnedButtons(
+        buttonGroup,
+        [
+          { action: 'table-add-row-before', icon: 'add_row_before', label: '上方插行', kind: 'row' },
+          { action: 'table-add-row-after', icon: 'add_row_after', label: '下方插行', kind: 'row' },
+          { action: 'table-delete-row', icon: 'delete_row', label: '删除行', kind: 'row' }
+        ],
+        ({ action, kind }) => host?.tableHandleController?.runPinnedAction(kind, action)
+      );
+      const deleteButton = rowHandle.querySelector('.button-group button:not([data-table-pinned-action])');
+      setButtonLabel(deleteButton, '删除行');
+      hideBuiltinDeleteButton(deleteButton);
+    }
+
+    const xLineHandle = tableBlockRoot.querySelector('[data-role="x-line-drag-handle"]');
+    if (xLineHandle instanceof HTMLElement) {
+      xLineHandle.dataset.show = 'false';
+    }
+
+    const yLineHandle = tableBlockRoot.querySelector('[data-role="y-line-drag-handle"]');
+    if (yLineHandle instanceof HTMLElement) {
+      yLineHandle.dataset.show = 'false';
+    }
+  });
+}
+
+function waitForNextFrame() {
+  return new Promise((resolve) => {
+    window.requestAnimationFrame(() => resolve());
+  });
+}
+
+function setPinnedActionDisabled(button, disabled) {
+  if (!(button instanceof HTMLButtonElement)) {
+    return;
+  }
+
+  button.disabled = disabled;
+  button.setAttribute('aria-disabled', disabled ? 'true' : 'false');
+}
+
+function resolveTableMatchAtPos(doc, pos) {
+  if (!doc || typeof pos !== 'number') {
+    return null;
+  }
+
+  const maxPos = Math.max(0, doc.content.size);
+  const safePos = Math.min(Math.max(0, pos), maxPos);
+  return findAncestorOfType(doc.resolve(safePos), ['table']);
+}
+
+function ensureTableHasHeaderRowAtPos(editor, tablePos) {
+  if (!editor || typeof tablePos !== 'number') {
+    return false;
+  }
+
+  const view = editor.ctx.get(editorViewCtx);
+  const schema = editor.ctx.get(schemaCtx);
+  const tableMatch = resolveTableMatchAtPos(view.state.doc, tablePos);
+  if (!tableMatch?.node?.childCount) {
+    return false;
+  }
+
+  const firstRow = tableMatch.node.firstChild;
+  const headerRowType = schema.nodes.table_header_row;
+  const headerCellType = schema.nodes.table_header;
+  if (!firstRow || firstRow.type.name !== 'table_row' || !headerRowType || !headerCellType) {
+    return false;
+  }
+
+  const headerCells = [];
+  firstRow.forEach((cell) => {
+    if (cell.type === headerCellType) {
+      headerCells.push(cell);
+      return;
+    }
+
+    headerCells.push(headerCellType.create(cell.attrs, cell.content, cell.marks));
+  });
+
+  const replacement = headerRowType.create(firstRow.attrs, headerCells, firstRow.marks);
+  const firstRowPos = tableMatch.pos + 1;
+  view.dispatch(view.state.tr.replaceWith(firstRowPos, firstRowPos + firstRow.nodeSize, replacement));
+  return true;
+}
+
+class TableHandleController {
+  constructor(host) {
+    this.host = host;
+    this.root = host.root;
+    this.pinnedCell = null;
+    this.openMenuKind = null;
+    this.hoverMenuKind = null;
+    this.syncFrame = 0;
+    this.menuRecoveryTimer = 0;
+    this.menuRecoveryKind = null;
+    this.menuRecoveryAttempt = 0;
+  }
+
+  attach() {
+    this.root.addEventListener('click', this.handleRootClick, true);
+    this.root.addEventListener('pointerover', this.handleRootPointerOver, true);
+    this.root.addEventListener('pointerout', this.handleRootPointerOut, true);
+    this.root.addEventListener('mouseup', this.queueSelectionSync, true);
+    this.root.addEventListener('keyup', this.queueSelectionSync, true);
+    document.addEventListener('pointerdown', this.handleDocumentPointerDown, true);
+    document.addEventListener('selectionchange', this.handleSelectionChange, true);
+    window.addEventListener('resize', this.queueSyncPinnedHandles);
+    this.root.addEventListener('scroll', this.queueSyncPinnedHandles, true);
+  }
+
+  destroy() {
+    this.clearPinnedTable();
+    this.clearPinnedMenuRecovery();
+    if (this.syncFrame) {
+      window.cancelAnimationFrame(this.syncFrame);
+      this.syncFrame = 0;
+    }
+    this.root.removeEventListener('click', this.handleRootClick, true);
+    this.root.removeEventListener('pointerover', this.handleRootPointerOver, true);
+    this.root.removeEventListener('pointerout', this.handleRootPointerOut, true);
+    this.root.removeEventListener('mouseup', this.queueSelectionSync, true);
+    this.root.removeEventListener('keyup', this.queueSelectionSync, true);
+    document.removeEventListener('pointerdown', this.handleDocumentPointerDown, true);
+    document.removeEventListener('selectionchange', this.handleSelectionChange, true);
+    window.removeEventListener('resize', this.queueSyncPinnedHandles);
+    this.root.removeEventListener('scroll', this.queueSyncPinnedHandles, true);
+  }
+
+  handleRootClick = (event) => {
+    const target = event.target instanceof Element ? event.target : null;
+    if (!target) {
+      return;
+    }
+
+    if (target.closest('.milkdown-table-block .button-group button')) {
+      return;
+    }
+
+    if (target.closest('.milkdown-table-block [data-role="row-drag-handle"], .milkdown-table-block [data-role="col-drag-handle"]')) {
+      return;
+    }
+
+    const cell = target.closest('.milkdown-table-block table.children td, .milkdown-table-block table.children th');
+    if (cell instanceof HTMLElement) {
+      this.pinCell(cell);
+      return;
+    }
+
+    if (!target.closest('.milkdown-table-block')) {
+      this.clearPinnedTable();
+    }
+  };
+
+  handleDocumentPointerDown = (event) => {
+    const target = event.target instanceof Element ? event.target : null;
+    if (!target) {
+      return;
+    }
+
+    if (target.closest('.milkdown-table-block .button-group button')) {
+      return;
+    }
+
+    const rowHandle = target.closest('.milkdown-table-block [data-role="row-drag-handle"]');
+    if (rowHandle instanceof HTMLElement && rowHandle.closest('.milkdown-table-block')?.dataset.pinned === 'true') {
+      event.preventDefault();
+      event.stopPropagation();
+      void this.togglePinnedMenu('row');
+      return;
+    }
+
+    const colHandle = target.closest('.milkdown-table-block [data-role="col-drag-handle"]');
+    if (colHandle instanceof HTMLElement && colHandle.closest('.milkdown-table-block')?.dataset.pinned === 'true') {
+      event.preventDefault();
+      event.stopPropagation();
+      void this.togglePinnedMenu('col');
+      return;
+    }
+
+    if (!this.root.contains(target)) {
+      this.clearPinnedTable();
+      return;
+    }
+
+    if (!target.closest('.milkdown-table-block')) {
+      this.clearPinnedTable();
+    }
+  };
+
+  handleSelectionChange = () => {
+    this.queueSelectionSync();
+  };
+
+  getPinnedMenuKindFromTarget(target) {
+    if (!(target instanceof Element) || !this.pinnedCell?.tableBlock) {
+      return null;
+    }
+
+    const handle = target.closest('.milkdown-table-block [data-role="row-drag-handle"], .milkdown-table-block [data-role="col-drag-handle"]');
+    if (!(handle instanceof HTMLElement) || handle.closest('.milkdown-table-block') !== this.pinnedCell.tableBlock) {
+      return null;
+    }
+
+    return handle.dataset.role === 'row-drag-handle' ? 'row' : 'col';
+  }
+
+  handleRootPointerOver = (event) => {
+    const kind = this.getPinnedMenuKindFromTarget(event.target);
+    if (kind === this.hoverMenuKind) {
+      return;
+    }
+
+    this.hoverMenuKind = kind;
+    this.applyPinnedMenuState();
+  };
+
+  handleRootPointerOut = (event) => {
+    const currentKind = this.getPinnedMenuKindFromTarget(event.target);
+    if (!currentKind) {
+      return;
+    }
+
+    const nextKind = this.getPinnedMenuKindFromTarget(event.relatedTarget);
+    if (nextKind === currentKind) {
+      return;
+    }
+
+    this.hoverMenuKind = nextKind;
+    this.applyPinnedMenuState();
+  };
+
+  clearPinnedMenuRecovery() {
+    if (this.menuRecoveryTimer) {
+      window.clearTimeout(this.menuRecoveryTimer);
+      this.menuRecoveryTimer = 0;
+    }
+    this.menuRecoveryKind = null;
+    this.menuRecoveryAttempt = 0;
+  }
+
+  schedulePinnedMenuRecovery(kind = this.openMenuKind, attempt = 0) {
+    this.clearPinnedMenuRecovery();
+    if (!this.pinnedCell || !kind || this.openMenuKind !== kind) {
+      return;
+    }
+
+    this.menuRecoveryKind = kind;
+    this.menuRecoveryAttempt = attempt;
+    const delay = attempt === 0 ? 120 : 80;
+    this.menuRecoveryTimer = window.setTimeout(() => {
+      this.menuRecoveryTimer = 0;
+      if (!this.pinnedCell || this.openMenuKind !== kind) {
+        this.clearPinnedMenuRecovery();
+        return;
+      }
+
+      this.syncPinnedHandles();
+      this.applyPinnedMenuState();
+
+      const buttonGroup = this.pinnedCell.tableBlock?.querySelector(
+        kind === 'row'
+          ? '[data-role="row-drag-handle"] .button-group'
+          : '[data-role="col-drag-handle"] .button-group'
+      );
+      const isVisible = buttonGroup instanceof HTMLElement
+        && buttonGroup.dataset.show === 'true'
+        && window.getComputedStyle(buttonGroup).pointerEvents !== 'none';
+
+      if (isVisible || attempt >= 5) {
+        this.clearPinnedMenuRecovery();
+        return;
+      }
+
+      this.schedulePinnedMenuRecovery(kind, attempt + 1);
+    }, delay);
+  }
+
+  queueSyncPinnedHandles = () => {
+    if (!this.pinnedCell || this.syncFrame) {
+      return;
+    }
+
+    this.syncFrame = window.requestAnimationFrame(() => {
+      this.syncFrame = 0;
+      this.syncPinnedHandles();
+    });
+  };
+
+  queueSelectionSync = () => {
+    if (this.syncFrame) {
+      return;
+    }
+
+    this.syncFrame = window.requestAnimationFrame(() => {
+      this.syncFrame = 0;
+      this.syncPinnedHandleFromSelection();
+    });
+  };
+
+  findCellFromCurrentSelection() {
+    const selection = window.getSelection?.();
+    const anchorNode = selection?.anchorNode;
+    const anchorElement = anchorNode instanceof Element ? anchorNode : anchorNode?.parentElement;
+    const directCell = anchorElement?.closest?.('.milkdown-table-block table.children td, .milkdown-table-block table.children th');
+    if (directCell instanceof HTMLElement && this.root.contains(directCell)) {
+      return directCell;
+    }
+
+    const selectedCell = this.root.querySelector('.milkdown-table-block table.children td.selectedCell, .milkdown-table-block table.children th.selectedCell');
+    if (selectedCell instanceof HTMLElement) {
+      return selectedCell;
+    }
+
+    return null;
+  }
+
+  syncPinnedHandleFromSelection() {
+    const cell = this.findCellFromCurrentSelection();
+    if (cell instanceof HTMLElement) {
+      this.pinCell(cell);
+      return;
+    }
+
+    if (this.openMenuKind && this.pinnedCell) {
+      this.syncPinnedHandles();
+      return;
+    }
+
+    const activeElement = document.activeElement;
+    if (activeElement instanceof Element && activeElement.closest('.milkdown-table-block [data-role="row-drag-handle"], .milkdown-table-block [data-role="col-drag-handle"], .milkdown-table-block .button-group')) {
+      return;
+    }
+
+    if (this.pinnedCell) {
+      this.clearPinnedTable();
+    }
+  }
+
+  clearPinnedTable() {
+    this.clearPinnedMenuRecovery();
+    if (this.pinnedCell?.tableBlock instanceof HTMLElement) {
+      const { tableBlock } = this.pinnedCell;
+      tableBlock.dataset.pinned = 'false';
+      delete tableBlock.dataset.pinnedMenuVisible;
+      tableBlock.querySelectorAll('[data-role="row-drag-handle"], [data-role="col-drag-handle"]').forEach((handle) => {
+        if (handle instanceof HTMLElement) {
+          handle.dataset.show = 'false';
+          const buttonGroup = handle.querySelector('.button-group');
+          if (buttonGroup instanceof HTMLElement) {
+            buttonGroup.dataset.show = 'false';
+          }
+        }
+      });
+    }
+
+    this.pinnedCell = null;
+    this.openMenuKind = null;
+    this.hoverMenuKind = null;
+  }
+
+  updatePinnedActionAvailability() {
+    if (!this.pinnedCell?.tableBlock || !(this.pinnedCell.table instanceof HTMLTableElement)) {
+      return;
+    }
+
+    const rowCount = this.pinnedCell.table.rows.length;
+    const rowIndex = this.pinnedCell.rowIndex;
+    const rowGroup = this.pinnedCell.tableBlock.querySelector('[data-role="row-drag-handle"] .button-group');
+    if (rowGroup instanceof HTMLElement) {
+      const addRowBeforeButton = rowGroup.querySelector('[data-table-pinned-action="table-add-row-before"]');
+      const deleteRowButton = rowGroup.querySelector('[data-table-pinned-action="table-delete-row"]');
+      setPinnedActionDisabled(addRowBeforeButton, rowIndex === 0);
+      setPinnedActionDisabled(deleteRowButton, rowIndex === 0 || (rowCount === 2 && rowIndex === 1));
+    }
+  }
+
+  pinCell(cell) {
+    if (!(cell instanceof HTMLElement) || !this.host.editor) {
+      return;
+    }
+
+    const tableBlock = cell.closest('.milkdown-table-block');
+    const table = cell.closest('table.children');
+    const row = cell.closest('tr');
+    if (!(tableBlock instanceof HTMLElement) || !(table instanceof HTMLTableElement) || !(row instanceof HTMLTableRowElement)) {
+      return;
+    }
+
+    const rows = Array.from(table.rows);
+    const rowIndex = rows.indexOf(row);
+    const colIndex = Array.from(row.cells).indexOf(cell);
+    if (rowIndex < 0 || colIndex < 0) {
+      return;
+    }
+
+    if (
+      this.pinnedCell?.tableBlock === tableBlock &&
+      this.pinnedCell?.rowIndex === rowIndex &&
+      this.pinnedCell?.colIndex === colIndex
+    ) {
+      this.syncPinnedHandles();
+      return;
+    }
+
+    const view = this.host.editor.ctx.get(editorViewCtx);
+    const cellPos = view.posAtDOM(cell, 0);
+    if (typeof cellPos !== 'number') {
+      return;
+    }
+
+    const tableMatch = findAncestorOfType(view.state.doc.resolve(cellPos), ['table']);
+    if (!tableMatch) {
+      return;
+    }
+
+    this.root.querySelectorAll('.milkdown-table-block[data-pinned="true"]').forEach((node) => {
+      if (node instanceof HTMLElement) {
+        node.dataset.pinned = 'false';
+      }
+    });
+
+    this.pinnedCell = {
+      tableBlock,
+      table,
+      rowIndex,
+      colIndex,
+      tablePos: tableMatch.pos + 1
+    };
+    tableBlock.dataset.pinned = 'true';
+    this.syncPinnedHandles();
+  }
+
+  applyPinnedMenuState() {
+    if (!this.pinnedCell?.tableBlock) {
+      return;
+    }
+
+    const visibleKind = this.openMenuKind ?? this.hoverMenuKind ?? null;
+    const rowGroup = this.pinnedCell.tableBlock.querySelector('[data-role="row-drag-handle"] .button-group');
+    const colGroup = this.pinnedCell.tableBlock.querySelector('[data-role="col-drag-handle"] .button-group');
+
+    if (visibleKind) {
+      this.pinnedCell.tableBlock.dataset.pinnedMenuVisible = visibleKind;
+    } else {
+      delete this.pinnedCell.tableBlock.dataset.pinnedMenuVisible;
+    }
+
+    if (rowGroup instanceof HTMLElement) {
+      rowGroup.dataset.show = visibleKind === 'row' ? 'true' : 'false';
+    }
+    if (colGroup instanceof HTMLElement) {
+      colGroup.dataset.show = visibleKind === 'col' ? 'true' : 'false';
+    }
+  }
+
+  tryRebindPinnedCell() {
+    const reboundCell = this.findCellFromCurrentSelection();
+    if (!(reboundCell instanceof HTMLElement)) {
+      return false;
+    }
+
+    this.pinCell(reboundCell);
+    return true;
+  }
+
+  syncPinnedHandles() {
+    if (!this.pinnedCell) {
+      return;
+    }
+
+    const { tableBlock, table } = this.pinnedCell;
+    if (!(tableBlock instanceof HTMLElement) || !(table instanceof HTMLTableElement) || !tableBlock.isConnected || !table.isConnected) {
+      if (this.tryRebindPinnedCell()) {
+        return;
+      }
+      this.clearPinnedTable();
+      return;
+    }
+
+    const rows = Array.from(table.rows);
+    if (!rows.length) {
+      if (this.tryRebindPinnedCell()) {
+        return;
+      }
+      this.clearPinnedTable();
+      return;
+    }
+
+    this.pinnedCell.rowIndex = Math.min(this.pinnedCell.rowIndex, rows.length - 1);
+    const row = rows[this.pinnedCell.rowIndex];
+    const cells = Array.from(row.cells);
+    if (!cells.length) {
+      this.clearPinnedTable();
+      return;
+    }
+
+    this.pinnedCell.colIndex = Math.min(this.pinnedCell.colIndex, cells.length - 1);
+    const cell = cells[this.pinnedCell.colIndex];
+    const colHeaderCell = rows[0]?.cells?.[this.pinnedCell.colIndex] ?? cell;
+
+    const rowHandle = tableBlock.querySelector('[data-role="row-drag-handle"]');
+    const colHandle = tableBlock.querySelector('[data-role="col-drag-handle"]');
+    const xLineHandle = tableBlock.querySelector('[data-role="x-line-drag-handle"]');
+    const yLineHandle = tableBlock.querySelector('[data-role="y-line-drag-handle"]');
+
+    if (!(rowHandle instanceof HTMLElement) || !(colHandle instanceof HTMLElement)) {
+      if (this.tryRebindPinnedCell()) {
+        return;
+      }
+      this.clearPinnedTable();
+      return;
+    }
+
+    syncTableHandleLabels(this.root, this.host);
+
+    const blockRect = tableBlock.getBoundingClientRect();
+    const tableRect = table.getBoundingClientRect();
+    const rowCellRect = cell.getBoundingClientRect();
+    const colCellRect = colHeaderCell.getBoundingClientRect();
+
+    rowHandle.dataset.show = 'true';
+    colHandle.dataset.show = 'true';
+    if (xLineHandle instanceof HTMLElement) {
+      xLineHandle.dataset.show = 'false';
+    }
+    if (yLineHandle instanceof HTMLElement) {
+      yLineHandle.dataset.show = 'false';
+    }
+
+    const rowWidth = rowHandle.getBoundingClientRect().width || 28;
+    const rowHeight = rowHandle.getBoundingClientRect().height || 28;
+    const colWidth = colHandle.getBoundingClientRect().width || 28;
+    const colHeight = colHandle.getBoundingClientRect().height || 28;
+
+    rowHandle.style.left = `${Math.round(tableRect.left - blockRect.left - rowWidth / 2 - 8)}px`;
+    rowHandle.style.top = `${Math.round(rowCellRect.top - blockRect.top + rowCellRect.height / 2 - rowHeight / 2)}px`;
+    colHandle.style.left = `${Math.round(colCellRect.left - blockRect.left + colCellRect.width / 2 - colWidth / 2)}px`;
+    colHandle.style.top = `${Math.round(tableRect.top - blockRect.top - colHeight / 2 - 8)}px`;
+    this.updatePinnedActionAvailability();
+    this.applyPinnedMenuState();
+  }
+
+  async selectPinnedLine(kind) {
+    if (!this.pinnedCell || !this.host.editor) {
+      return false;
+    }
+
+    const commandKey = kind === 'row' ? selectRowCommand.key : selectColCommand.key;
+    const index = kind === 'row' ? this.pinnedCell.rowIndex : this.pinnedCell.colIndex;
+    return this.host.editor.action(callCommand(commandKey, {
+      pos: this.pinnedCell.tablePos,
+      index
+    }));
+  }
+
+  async togglePinnedMenu(kind) {
+    if (!this.pinnedCell) {
+      return;
+    }
+
+    this.openMenuKind = this.openMenuKind === kind ? null : kind;
+    this.applyPinnedMenuState();
+    if (!this.openMenuKind) {
+      this.clearPinnedMenuRecovery();
+      return;
+    }
+    await this.selectPinnedLine(kind);
+    this.syncPinnedHandles();
+    window.requestAnimationFrame(() => {
+      this.applyPinnedMenuState();
+    });
+    this.schedulePinnedMenuRecovery(kind);
+  }
+
+  async runPinnedAction(kind, action) {
+    if (!this.pinnedCell) {
+      return false;
+    }
+
+    const pinnedSnapshot = {
+      tablePos: this.pinnedCell.tablePos,
+      rowIndex: this.pinnedCell.rowIndex,
+      colIndex: this.pinnedCell.colIndex
+    };
+    await this.selectPinnedLine(kind);
+    if (action === 'table-delete-row' || action === 'table-delete-col') {
+      await waitForNextFrame();
+    }
+    const result = await this.host.run(action);
+    if (result && (action === 'table-delete-row' || action === 'table-delete-col')) {
+      this.host.repairTableAfterDelete(pinnedSnapshot);
+    }
+    this.queueSyncPinnedHandles();
+    return result;
+  }
+}
+
 const commandResolvers = {
   'paragraph': () => ({ key: turnIntoTextCommand.key }),
   'heading-1': () => ({ key: wrapInHeadingCommand.key, payload: 1 }),
@@ -131,7 +880,23 @@ const commandResolvers = {
   link: () => ({ key: insertLinkCommand.key }),
   image: () => ({ key: insertImageBlockCommand.key }),
   'internal-link': () => ({ key: insertInternalLinkCommand.key }),
-  table: () => ({ key: insertTableCommand.key, payload: { row: 3, col: 3 } }),
+  table: (options = {}) => ({
+    key: insertTableCommand.key,
+    payload: {
+      row: normalizeTableDimension(options.row ?? options.rows ?? 3, 3),
+      col: normalizeTableDimension(options.col ?? options.cols ?? 3, 3)
+    }
+  }),
+  'table-add-row-before': () => ({ key: addRowBeforeCommand.key }),
+  'table-add-row-after': () => ({ key: addRowAfterCommand.key }),
+  'table-add-col-before': () => ({ key: addColBeforeCommand.key }),
+  'table-add-col-after': () => ({ key: addColAfterCommand.key }),
+  'table-delete-row': () => ({ key: deleteSelectedCellsCommand.key }),
+  'table-delete-col': () => ({ key: deleteSelectedCellsCommand.key }),
+  'table-delete-selection': () => ({ key: deleteSelectedCellsCommand.key }),
+  'table-align-left': () => ({ key: setAlignCommand.key, payload: 'left' }),
+  'table-align-center': () => ({ key: setAlignCommand.key, payload: 'center' }),
+  'table-align-right': () => ({ key: setAlignCommand.key, payload: 'right' }),
   undo: () => ({ key: undoCommand.key }),
   redo: () => ({ key: redoCommand.key })
 };
@@ -563,6 +1328,164 @@ const findHighlightBehavior = $prose(() => new Plugin({
   }
 }));
 
+/**
+ * ImageOverlayResizer — 为图片提供四边四角缩放手柄 overlay
+ *
+ * 独立于 Milkdown/Vue 生命周期，通过指针事件实现拖拽缩放。
+ * 每次 scaleRatio = displayHeight / baselineHeight，通过 setAttr("ratio", ...) 持久化。
+ */
+class ImageOverlayResizer {
+  static HANDLE_SIDES = ['n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw'];
+
+  constructor(root) {
+    this.root = root;
+    this.activeTarget = null;   // { imageBlock, img, startRect, startPointer, side }
+    this.handleRefs = new Map();  // imageBlock -> { container, handles[] }
+  }
+
+  sync() {
+    const blocks = this.root.querySelectorAll('.milkdown-image-block');
+    const existing = new Set();
+
+    blocks.forEach((block) => {
+      const img = block.querySelector('img[src]');
+      if (!img || !(img instanceof HTMLImageElement) || !img.complete || img.naturalWidth <= 0) {
+        return;
+      }
+
+      existing.add(block);
+
+      if (this.handleRefs.has(block)) {
+        return; // 已有手柄，跳过
+      }
+
+      this.attachHandles(block, img);
+    });
+
+    /* 清理已被移除的图片 */
+    for (const [block] of this.handleRefs) {
+      if (!existing.has(block) || !document.contains(block)) {
+        this.detachHandles(block);
+      }
+    }
+  }
+
+  attachHandles(block, img) {
+    const container = document.createElement('div');
+    container.className = 'milkdown-image-resize-overlay';
+
+    const handles = [];
+    ImageOverlayResizer.HANDLE_SIDES.forEach((side) => {
+      const handle = document.createElement('div');
+      handle.className = 'milkdown-resize-handle';
+      handle.dataset.side = side;
+      handle.addEventListener('pointerdown', (e) => this.onPointerDown(e, block, img, side));
+      container.appendChild(handle);
+      handles.push(handle);
+    });
+
+    block.appendChild(container);
+    this.handleRefs.set(block, { container, handles, img });
+  }
+
+  detachHandles(block) {
+    const ref = this.handleRefs.get(block);
+    if (ref) {
+      ref.container.remove();
+      this.handleRefs.delete(block);
+    }
+  }
+
+  onPointerDown(e, block, img, side) {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+
+    const rect = img.getBoundingClientRect();
+    this.activeTarget = {
+      imageBlock: block,
+      img,
+      startRect: { x: rect.left, y: rect.top, w: rect.width, h: rect.height },
+      startPointer: { x: e.clientX, y: e.clientY },
+      side
+    };
+
+    window.addEventListener('pointermove', this._onMove);
+    window.addEventListener('pointerup', this._onUp);
+  }
+
+  _onMove = (e) => {
+    const t = this.activeTarget;
+    if (!t) return;
+
+    const dx = e.clientX - t.startPointer.x;
+    const dy = e.clientY - t.startPointer.y;
+    let { x, y, w, h } = t.startRect;
+
+    /* 根据 side 计算新宽高和偏移 */
+    const side = t.side;
+
+    // ── 水平边 ──
+    if (side === 'e') {
+      w = Math.max(50, w + dx);
+    } else if (side === 'w') {
+      w = Math.max(50, w - dx);
+      x = t.startRect.x + (t.startRect.w - w);
+    }
+    // ── 垂直边 ──
+    else if (side === 's') {
+      h = Math.max(50, h + dy);
+    } else if (side === 'n') {
+      h = Math.max(50, h - dy);
+      y = t.startRect.y + (t.startRect.h - h);
+    }
+    // ── 角：自由缩放 ──
+    else if (side === 'se') {
+      w = Math.max(50, w + dx);
+      h = Math.max(50, h + dy);
+    } else if (side === 'sw') {
+      w = Math.max(50, w - dx);
+      h = Math.max(50, h + dy);
+      x = t.startRect.x + (t.startRect.w - w);
+    } else if (side === 'ne') {
+      w = Math.max(50, w + dx);
+      h = Math.max(50, h - dy);
+      y = t.startRect.y + (t.startRect.h - h);
+    } else if (side === 'nw') {
+      w = Math.max(50, w - dx);
+      h = Math.max(50, h - dy);
+      x = t.startRect.x + (t.startRect.w - w);
+      y = t.startRect.y + (t.startRect.h - h);
+    }
+
+    t.img.style.width = `${w.toFixed(2)}px`;
+    t.img.style.height = `${h.toFixed(2)}px`;
+  };
+
+  _onUp = () => {
+    window.removeEventListener('pointermove', this._onMove);
+    window.removeEventListener('pointerup', this._onUp);
+
+    const t = this.activeTarget;
+    if (!t) return;
+
+    /* 通过 dispatch load 事件触发 Milkdown 的 onImageLoad 来持久化 ratio */
+    t.img.dispatchEvent(new Event('load'));
+
+    this.activeTarget = null;
+  };
+
+  destroy() {
+    window.removeEventListener('pointermove', this._onMove);
+    window.removeEventListener('pointerup', this._onUp);
+    this.activeTarget = null;
+    for (const [block] of this.handleRefs) {
+      this.detachHandles(block);
+    }
+    this.handleRefs.clear();
+  }
+}
+
 export class MilkdownHost {
   constructor({ root, markdown = '', onChange, noteId = null } = {}) {
     if (!(root instanceof HTMLElement)) {
@@ -576,6 +1499,8 @@ export class MilkdownHost {
     this.imageLayoutObserver = null;
     this.imageLayoutRefreshFrame = 0;
     this.imageLayoutLastWidth = 0;
+    this.imageResizer = null;
+    this.tableHandleController = null;
     this.ready = this.mount(normalizeMarkdown(markdown));
   }
 
@@ -589,6 +1514,9 @@ export class MilkdownHost {
         ctx.set(imageBlockConfig.key, {
           ...defaultImageBlockConfig,
           onUpload: async (file) => host.uploadAttachmentImage(file)
+        });
+        ctx.set(tableBlockConfig.key, {
+          renderButton: renderTableButton
         });
         ctx.get(listenerCtx).markdownUpdated((listenerCtxValue, nextMarkdown) => {
           host.onChange?.(nextMarkdown, listenerCtxValue);
@@ -605,12 +1533,16 @@ export class MilkdownHost {
       .use(insertInternalLinkCommand)
       .use(turnIntoTaskListCommand)
       .use(imageBlockComponent)
+      .use(tableBlock)
       .use(enhancedEnterBehavior)
       .use(findHighlightBehavior);
 
     await this.editor.create();
     this.root.dataset.editorReady = 'true';
     this.attachImageLayoutObserver();
+    this.attachImageResizer();
+    this.attachTableHandleController();
+    syncTableHandleLabels(this.root, this);
     this.scheduleImageLayoutRefresh();
     return this;
   }
@@ -618,6 +1550,8 @@ export class MilkdownHost {
   async setMarkdown(markdown) {
     await this.ready;
     this.editor.action(replaceAll(normalizeMarkdown(markdown), true));
+    syncTableHandleLabels(this.root, this);
+    this.tableHandleController?.queueSyncPinnedHandles();
   }
 
   async getMarkdown() {
@@ -625,7 +1559,7 @@ export class MilkdownHost {
     return this.editor.action(getMarkdown());
   }
 
-  async run(commandKey) {
+  async run(commandKey, options = {}) {
     await this.ready;
     const view = this.editor.ctx.get(editorViewCtx);
     if (commandKey === 'paragraph-above') {
@@ -658,8 +1592,10 @@ export class MilkdownHost {
       return false;
     }
 
-    const { key, payload } = resolve();
+    const { key, payload } = resolve(options);
     const result = await this.editor.action(callCommand(key, payload));
+    syncTableHandleLabels(this.root, this);
+    this.tableHandleController?.queueSyncPinnedHandles();
     view.focus();
     return result;
   }
@@ -668,6 +1604,29 @@ export class MilkdownHost {
     await this.ready;
     const view = this.editor.ctx.get(editorViewCtx);
     view.focus();
+  }
+
+  repairTableAfterDelete(pinnedSnapshot) {
+    if (!this.editor || !pinnedSnapshot) {
+      return false;
+    }
+
+    const repaired = ensureTableHasHeaderRowAtPos(this.editor, pinnedSnapshot.tablePos);
+    if (repaired) {
+      syncTableHandleLabels(this.root, this);
+      this.tableHandleController?.queueSyncPinnedHandles();
+    }
+    return repaired;
+  }
+
+  attachImageResizer() {
+    this.imageResizer = new ImageOverlayResizer(this.root);
+    this.imageResizer.sync();
+  }
+
+  attachTableHandleController() {
+    this.tableHandleController = new TableHandleController(this);
+    this.tableHandleController.attach();
   }
 
   attachImageLayoutObserver() {
@@ -721,6 +1680,7 @@ export class MilkdownHost {
   }
 
   refreshImageBlockLayouts() {
+    syncTableHandleLabels(this.root, this);
     const images = this.root.querySelectorAll('.milkdown-image-block img[src]');
     images.forEach((image) => {
       if (!(image instanceof HTMLImageElement)) {
@@ -733,6 +1693,8 @@ export class MilkdownHost {
 
       image.dispatchEvent(new Event('load'));
     });
+    this.imageResizer?.sync();
+    this.tableHandleController?.queueSyncPinnedHandles();
   }
 
   async uploadAttachmentImage(file) {
@@ -879,6 +1841,10 @@ export class MilkdownHost {
 
     await this.ready;
     this.disconnectImageLayoutObserver();
+    this.tableHandleController?.destroy();
+    this.tableHandleController = null;
+    this.imageResizer?.destroy();
+    this.imageResizer = null;
     await this.editor.destroy();
     this.root.dataset.editorReady = 'false';
     this.editor = null;
