@@ -72,6 +72,7 @@ const editorContextParagraphItems = [
   'heading-6'
 ];
 const editorContextInsertItems = [
+  'table',
   'hr',
   'image',
   'codeblock',
@@ -100,6 +101,7 @@ const editorContextActionMeta = {
   'heading-4': { label: 'H4' },
   'heading-5': { label: 'H5' },
   'heading-6': { label: 'H6' },
+  table: { label: '表格', icon: 'table' },
   hr: { label: '水平分割线' },
   'paragraph-above': { label: '段落（上方）' },
   'paragraph-below': { label: '段落（下方）' },
@@ -158,6 +160,12 @@ const state = {
     matchCount: 0,
     autoFocusInput: false
   },
+  editorTableDialog: {
+    open: false,
+    rows: '4',
+    cols: '3',
+    autoFocusInput: false
+  },
   sectionMenuOpen: false,
   contextMenu: {
     open: false,
@@ -204,6 +212,7 @@ const railItems = [
 ];
 
 const formatButtons = [
+  { key: 'table', label: '表格' },
   { key: 'internal-link', label: '内部链接' },
   { key: 'image', label: '图片' },
   { key: 'bold', label: '加粗' },
@@ -733,6 +742,7 @@ function bindEvents() {
     if (event.target.closest('#note-tab-menu')) return;
     if (event.target.closest('#editor-menu-bar')) return;
     if (event.target.closest('#editor-context-menu')) return;
+    if (event.target.closest('#editor-table-dialog')) return;
     if (event.target.closest('#secondary-nav-toggle')) return;
     closeContextMenu();
     closeSectionMenu();
@@ -752,6 +762,7 @@ function bindEvents() {
       closeTabMenu();
       closeEditorMenuBar();
       closeEditorContextMenu();
+      closeTableInsertDialog();
     }
   });
 
@@ -913,6 +924,17 @@ function bindEvents() {
   });
 
   document.addEventListener('input', (event) => {
+    const tableDialog = event.target.closest?.('#editor-table-dialog');
+    if (tableDialog) {
+      const target = event.target;
+      if (target?.dataset?.tableDialogField === 'rows') {
+        state.editorTableDialog.rows = target.value;
+      } else if (target?.dataset?.tableDialogField === 'cols') {
+        state.editorTableDialog.cols = target.value;
+      }
+      return;
+    }
+
     const panel = event.target.closest?.('#editor-utility-panel');
     if (!panel) {
       return;
@@ -934,6 +956,23 @@ function bindEvents() {
   });
 
   document.addEventListener('keydown', (event) => {
+    const tableDialog = event.target.closest?.('#editor-table-dialog');
+    if (tableDialog && state.editorTableDialog.open) {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        event.stopPropagation();
+        void submitTableInsertDialog();
+        return;
+      }
+
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
+        closeTableInsertDialog();
+        return;
+      }
+    }
+
     const panel = event.target.closest?.('#editor-utility-panel');
     if (panel && state.editorPanel.open && state.editorPanel.mode === 'find') {
       const action = resolveEditorPanelKeyboardAction(event);
@@ -959,6 +998,17 @@ function bindEvents() {
   }, true);
 
   document.addEventListener('click', (event) => {
+    const tableDialogAction = event.target.closest('[data-editor-table-dialog-action]');
+    if (tableDialogAction?.dataset.editorTableDialogAction) {
+      const action = tableDialogAction.dataset.editorTableDialogAction;
+      if (action === 'confirm') {
+        void submitTableInsertDialog();
+      } else {
+        closeTableInsertDialog();
+      }
+      return;
+    }
+
     const panelAction = event.target.closest('[data-editor-panel-action]');
     if (panelAction?.dataset.editorPanelAction) {
       void handleEditorPanelAction(panelAction.dataset.editorPanelAction);
@@ -2293,6 +2343,7 @@ function renderEditor(note) {
 
   if (!note) {
     void teardownEditorHost();
+    state.editorTableDialog.open = false;
     elements.editorContent.dataset.sourceOpen = 'false';
     elements.editorContent.dataset.viewMode = effectiveView.mode;
     elements.editorContent.innerHTML = renderPreviewPane('');
@@ -2301,6 +2352,7 @@ function renderEditor(note) {
 
   if (note.deleted) {
     void teardownEditorHost();
+    state.editorTableDialog.open = false;
     elements.editorContent.dataset.sourceOpen = 'false';
     elements.editorContent.dataset.viewMode = 'recycle';
     elements.editorContent.innerHTML = renderPreviewPane(note.rawMarkdown || '');
@@ -2314,6 +2366,7 @@ function renderEditor(note) {
     elements.editorContent.dataset.viewMode = effectiveView.mode;
     renderEditorSaveIndicator();
     renderEditorPanel();
+    renderTableInsertDialog();
     return;
   }
 
@@ -2323,6 +2376,7 @@ function renderEditor(note) {
 
   if (!shouldUseRichEditor) {
     void teardownEditorHost();
+    state.editorTableDialog.open = false;
     elements.editorContent.innerHTML = effectiveView.showSourceEditor
       ? `${renderSourceEditorView()}${renderPreviewPane(markdown)}`
       : renderPreviewPane(markdown);
@@ -2335,6 +2389,7 @@ function renderEditor(note) {
     <section class="editor-pane editor-pane-single">
       <div class="pane-body">
         <div class="editor-utility-panel" id="editor-utility-panel" hidden></div>
+        <div class="editor-table-dialog" id="editor-table-dialog" hidden></div>
         <div class="milkdown-host" id="milkdown-editor"></div>
       </div>
     </section>
@@ -2342,6 +2397,7 @@ function renderEditor(note) {
 
   renderEditorSaveIndicator();
   renderEditorPanel();
+  renderTableInsertDialog();
   mountEditorHost(note.id, state.draftMarkdown);
 }
 
@@ -2829,6 +2885,12 @@ function renderEditorContextIconSvg(icon) {
         <path d="M13.5 10.2h3.4v3.1a3.2 3.2 0 0 1-3.2 3.2h-1v-2.1h.6a1.1 1.1 0 0 0 1.1-1.1v-.8h-.9z" ${strokeAttrs}></path>
       `;
       break;
+    case 'table':
+      content = `
+        <rect x="4.5" y="5.5" width="15" height="13" rx="1.8" ${strokeAttrs}></rect>
+        <path d="M9.5 5.8v12.4M14.5 5.8v12.4M4.8 10h14.4M4.8 14h14.4" ${strokeAttrs}></path>
+      `;
+      break;
     case 'ordered':
       content = `
         <path d="M9.5 7.5h8M9.5 12h8M9.5 16.5h8M5.8 8.2V6.4l-1 .7M4.8 12.2c.3-.7.8-1.1 1.5-1.1.8 0 1.5.6 1.5 1.4 0 .7-.4 1.1-1 1.5l-1.8 1.2h2.9" ${strokeAttrs}></path>
@@ -2950,6 +3012,11 @@ async function handleEditorContextMenuAction(action) {
     return;
   }
 
+  if (action === 'table') {
+    openTableInsertDialog();
+    return;
+  }
+
   if (editorContextPrimaryActions.includes(action)) {
     await handleEditMenuAction(action);
     return;
@@ -2996,6 +3063,11 @@ function renderStatus() {
 
 async function handleFormat(format) {
   if (!currentEditorHost) {
+    return;
+  }
+
+  if (format === 'table') {
+    openTableInsertDialog();
     return;
   }
 
@@ -3059,6 +3131,11 @@ async function handleFormatMenuAction(action) {
 
   if (!currentEditorHost) {
     flashStatus('编辑器尚未就绪');
+    return;
+  }
+
+  if (action === 'table') {
+    openTableInsertDialog();
     return;
   }
 
@@ -4805,6 +4882,114 @@ function renderEditorPanel() {
       input?.focus();
       input?.select();
       state.editorPanel.autoFocusInput = false;
+    });
+  }
+}
+
+function normalizeTableDialogValue(value, fallback) {
+  const parsed = Number.parseInt(String(value ?? '').trim(), 10);
+  if (!Number.isFinite(parsed)) {
+    return fallback;
+  }
+
+  return Math.min(20, Math.max(1, parsed));
+}
+
+function openTableInsertDialog({ rows = '4', cols = '3' } = {}) {
+  state.editorTableDialog.open = true;
+  state.editorTableDialog.rows = String(rows);
+  state.editorTableDialog.cols = String(cols);
+  state.editorTableDialog.autoFocusInput = true;
+  closeEditorMenuBar();
+  closeEditorContextMenu();
+  renderTableInsertDialog();
+}
+
+function closeTableInsertDialog() {
+  if (!state.editorTableDialog.open) {
+    return;
+  }
+
+  state.editorTableDialog.open = false;
+  state.editorTableDialog.autoFocusInput = false;
+  renderTableInsertDialog();
+}
+
+async function submitTableInsertDialog() {
+  if (!currentEditorHost) {
+    flashStatus('编辑器尚未就绪');
+    return;
+  }
+
+  const row = normalizeTableDialogValue(state.editorTableDialog.rows, 4);
+  const col = normalizeTableDialogValue(state.editorTableDialog.cols, 3);
+  state.editorTableDialog.rows = String(row);
+  state.editorTableDialog.cols = String(col);
+
+  await currentEditorHost.run('table', { row, col });
+  closeTableInsertDialog();
+  await currentEditorHost.focus();
+}
+
+function renderTableInsertDialog() {
+  const dialog = document.getElementById('editor-table-dialog');
+  if (!dialog) {
+    return;
+  }
+
+  const note = getCurrentNote();
+  if (!state.editorTableDialog.open || !note || state.view.showSourceEditor) {
+    dialog.hidden = true;
+    dialog.innerHTML = '';
+    return;
+  }
+
+  dialog.hidden = false;
+  dialog.innerHTML = `
+    <div class="editor-table-dialog-backdrop" data-editor-table-dialog-action="cancel"></div>
+    <div class="editor-table-dialog-card" role="dialog" aria-modal="true" aria-labelledby="editor-table-dialog-title">
+      <div class="editor-table-dialog-title" id="editor-table-dialog-title">插入表格</div>
+      <div class="editor-table-dialog-grid">
+        <label class="editor-table-dialog-field">
+          <span>列</span>
+          <input
+            type="number"
+            min="1"
+            max="20"
+            step="1"
+            inputmode="numeric"
+            class="editor-table-dialog-input"
+            data-table-dialog-field="cols"
+            value="${escapeAttribute(state.editorTableDialog.cols)}"
+          />
+        </label>
+        <label class="editor-table-dialog-field">
+          <span>行</span>
+          <input
+            type="number"
+            min="1"
+            max="20"
+            step="1"
+            inputmode="numeric"
+            class="editor-table-dialog-input"
+            data-table-dialog-field="rows"
+            value="${escapeAttribute(state.editorTableDialog.rows)}"
+          />
+        </label>
+      </div>
+      <div class="editor-table-dialog-actions">
+        <button type="button" class="ghost-button" data-editor-table-dialog-action="cancel">取消</button>
+        <button type="button" class="subtle-button" data-editor-table-dialog-action="confirm">确定</button>
+      </div>
+    </div>
+  `;
+
+  if (state.editorTableDialog.autoFocusInput) {
+    window.requestAnimationFrame(() => {
+      const input = dialog.querySelector('[data-table-dialog-field="cols"]');
+      input?.focus();
+      input?.select();
+      state.editorTableDialog.autoFocusInput = false;
     });
   }
 }
