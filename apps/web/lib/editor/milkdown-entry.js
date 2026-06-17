@@ -37,8 +37,9 @@ import {
   setAlignCommand
 } from '@milkdown/preset-gfm';
 import { tableBlock, tableBlockConfig } from '@milkdown/components/table-block';
-import { imageBlockComponent, imageBlockConfig, defaultImageBlockConfig } from '@milkdown/kit/component/image-block';
+import { imageBlockConfig, defaultImageBlockConfig } from '@milkdown/components/image-block';
 import { $command, $prose, callCommand, getMarkdown, replaceAll } from '@milkdown/utils';
+import { enhancedImageBlockComponent } from './enhanced-image-block.js';
 import { resolveEnterBehavior, shouldKeepTrailingBlank } from './enter-behavior.js';
 import { resolveMatchNavigationIndex } from './find-navigation.js';
 import { removeSpuriousEmptyCodeBlocks, shouldPreferPlainMarkdown } from './markdown-paste.js';
@@ -1328,164 +1329,6 @@ const findHighlightBehavior = $prose(() => new Plugin({
   }
 }));
 
-/**
- * ImageOverlayResizer — 为图片提供四边四角缩放手柄 overlay
- *
- * 独立于 Milkdown/Vue 生命周期，通过指针事件实现拖拽缩放。
- * 每次 scaleRatio = displayHeight / baselineHeight，通过 setAttr("ratio", ...) 持久化。
- */
-class ImageOverlayResizer {
-  static HANDLE_SIDES = ['n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw'];
-
-  constructor(root) {
-    this.root = root;
-    this.activeTarget = null;   // { imageBlock, img, startRect, startPointer, side }
-    this.handleRefs = new Map();  // imageBlock -> { container, handles[] }
-  }
-
-  sync() {
-    const blocks = this.root.querySelectorAll('.milkdown-image-block');
-    const existing = new Set();
-
-    blocks.forEach((block) => {
-      const img = block.querySelector('img[src]');
-      if (!img || !(img instanceof HTMLImageElement) || !img.complete || img.naturalWidth <= 0) {
-        return;
-      }
-
-      existing.add(block);
-
-      if (this.handleRefs.has(block)) {
-        return; // 已有手柄，跳过
-      }
-
-      this.attachHandles(block, img);
-    });
-
-    /* 清理已被移除的图片 */
-    for (const [block] of this.handleRefs) {
-      if (!existing.has(block) || !document.contains(block)) {
-        this.detachHandles(block);
-      }
-    }
-  }
-
-  attachHandles(block, img) {
-    const container = document.createElement('div');
-    container.className = 'milkdown-image-resize-overlay';
-
-    const handles = [];
-    ImageOverlayResizer.HANDLE_SIDES.forEach((side) => {
-      const handle = document.createElement('div');
-      handle.className = 'milkdown-resize-handle';
-      handle.dataset.side = side;
-      handle.addEventListener('pointerdown', (e) => this.onPointerDown(e, block, img, side));
-      container.appendChild(handle);
-      handles.push(handle);
-    });
-
-    block.appendChild(container);
-    this.handleRefs.set(block, { container, handles, img });
-  }
-
-  detachHandles(block) {
-    const ref = this.handleRefs.get(block);
-    if (ref) {
-      ref.container.remove();
-      this.handleRefs.delete(block);
-    }
-  }
-
-  onPointerDown(e, block, img, side) {
-    if (e.button !== 0) return;
-    e.preventDefault();
-    e.stopPropagation();
-
-    const rect = img.getBoundingClientRect();
-    this.activeTarget = {
-      imageBlock: block,
-      img,
-      startRect: { x: rect.left, y: rect.top, w: rect.width, h: rect.height },
-      startPointer: { x: e.clientX, y: e.clientY },
-      side
-    };
-
-    window.addEventListener('pointermove', this._onMove);
-    window.addEventListener('pointerup', this._onUp);
-  }
-
-  _onMove = (e) => {
-    const t = this.activeTarget;
-    if (!t) return;
-
-    const dx = e.clientX - t.startPointer.x;
-    const dy = e.clientY - t.startPointer.y;
-    let { x, y, w, h } = t.startRect;
-
-    /* 根据 side 计算新宽高和偏移 */
-    const side = t.side;
-
-    // ── 水平边 ──
-    if (side === 'e') {
-      w = Math.max(50, w + dx);
-    } else if (side === 'w') {
-      w = Math.max(50, w - dx);
-      x = t.startRect.x + (t.startRect.w - w);
-    }
-    // ── 垂直边 ──
-    else if (side === 's') {
-      h = Math.max(50, h + dy);
-    } else if (side === 'n') {
-      h = Math.max(50, h - dy);
-      y = t.startRect.y + (t.startRect.h - h);
-    }
-    // ── 角：自由缩放 ──
-    else if (side === 'se') {
-      w = Math.max(50, w + dx);
-      h = Math.max(50, h + dy);
-    } else if (side === 'sw') {
-      w = Math.max(50, w - dx);
-      h = Math.max(50, h + dy);
-      x = t.startRect.x + (t.startRect.w - w);
-    } else if (side === 'ne') {
-      w = Math.max(50, w + dx);
-      h = Math.max(50, h - dy);
-      y = t.startRect.y + (t.startRect.h - h);
-    } else if (side === 'nw') {
-      w = Math.max(50, w - dx);
-      h = Math.max(50, h - dy);
-      x = t.startRect.x + (t.startRect.w - w);
-      y = t.startRect.y + (t.startRect.h - h);
-    }
-
-    t.img.style.width = `${w.toFixed(2)}px`;
-    t.img.style.height = `${h.toFixed(2)}px`;
-  };
-
-  _onUp = () => {
-    window.removeEventListener('pointermove', this._onMove);
-    window.removeEventListener('pointerup', this._onUp);
-
-    const t = this.activeTarget;
-    if (!t) return;
-
-    /* 通过 dispatch load 事件触发 Milkdown 的 onImageLoad 来持久化 ratio */
-    t.img.dispatchEvent(new Event('load'));
-
-    this.activeTarget = null;
-  };
-
-  destroy() {
-    window.removeEventListener('pointermove', this._onMove);
-    window.removeEventListener('pointerup', this._onUp);
-    this.activeTarget = null;
-    for (const [block] of this.handleRefs) {
-      this.detachHandles(block);
-    }
-    this.handleRefs.clear();
-  }
-}
-
 export class MilkdownHost {
   constructor({ root, markdown = '', onChange, noteId = null } = {}) {
     if (!(root instanceof HTMLElement)) {
@@ -1499,7 +1342,6 @@ export class MilkdownHost {
     this.imageLayoutObserver = null;
     this.imageLayoutRefreshFrame = 0;
     this.imageLayoutLastWidth = 0;
-    this.imageResizer = null;
     this.tableHandleController = null;
     this.ready = this.mount(normalizeMarkdown(markdown));
   }
@@ -1513,6 +1355,13 @@ export class MilkdownHost {
         ctx.set(defaultValueCtx, markdown);
         ctx.set(imageBlockConfig.key, {
           ...defaultImageBlockConfig,
+          uploadButton: '上传',
+          uploadPlaceholderText: '或粘贴图片链接',
+          confirmButton: `
+            <svg viewBox="0 0 16 16" aria-hidden="true">
+              <path d="M3.5 8.2 6.4 11l6.1-6.2"></path>
+            </svg>
+          `,
           onUpload: async (file) => host.uploadAttachmentImage(file)
         });
         ctx.set(tableBlockConfig.key, {
@@ -1532,7 +1381,7 @@ export class MilkdownHost {
       .use(insertImageBlockCommand)
       .use(insertInternalLinkCommand)
       .use(turnIntoTaskListCommand)
-      .use(imageBlockComponent)
+      .use(enhancedImageBlockComponent)
       .use(tableBlock)
       .use(enhancedEnterBehavior)
       .use(findHighlightBehavior);
@@ -1540,7 +1389,6 @@ export class MilkdownHost {
     await this.editor.create();
     this.root.dataset.editorReady = 'true';
     this.attachImageLayoutObserver();
-    this.attachImageResizer();
     this.attachTableHandleController();
     syncTableHandleLabels(this.root, this);
     this.scheduleImageLayoutRefresh();
@@ -1619,11 +1467,6 @@ export class MilkdownHost {
     return repaired;
   }
 
-  attachImageResizer() {
-    this.imageResizer = new ImageOverlayResizer(this.root);
-    this.imageResizer.sync();
-  }
-
   attachTableHandleController() {
     this.tableHandleController = new TableHandleController(this);
     this.tableHandleController.attach();
@@ -1693,7 +1536,6 @@ export class MilkdownHost {
 
       image.dispatchEvent(new Event('load'));
     });
-    this.imageResizer?.sync();
     this.tableHandleController?.queueSyncPinnedHandles();
   }
 
@@ -1843,8 +1685,6 @@ export class MilkdownHost {
     this.disconnectImageLayoutObserver();
     this.tableHandleController?.destroy();
     this.tableHandleController = null;
-    this.imageResizer?.destroy();
-    this.imageResizer = null;
     await this.editor.destroy();
     this.root.dataset.editorReady = 'false';
     this.editor = null;
