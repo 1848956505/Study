@@ -1,2 +1,54 @@
 @import '../styles/tokens.css';
 @import '../styles/components.css';
+
+/* 任务列表复选框样式 */
+.milkdown-host .ProseMirror li[data-item-type="task"] {
+  list-style: none;
+  position: relative;
+  padding-left: 1.8em;
+}
+
+.milkdown-host .ProseMirror li[data-item-type="task"]::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0.35em;
+  width: 1em;
+  height: 1em;
+  border: 1.5px solid var(--color-text-muted);
+  border-radius: 3px;
+  cursor: pointer;
+  box-sizing: border-box;
+  background: transparent;
+  transition: background 100ms ease, border-color 100ms ease;
+}
+
+.milkdown-host .ProseMirror li[data-item-type="task"]:hover::before {
+  border-color: var(--color-accent);
+}
+
+.milkdown-host .ProseMirror li[data-item-type="task"][data-checked="true"]::before {
+  background: var(--color-accent-strong);
+  border-color: var(--color-accent-strong);
+}
+
+.milkdown-host .ProseMirror li[data-item-type="task"][data-checked="true"]::after {
+  content: '';
+  position: absolute;
+  left: 0.25em;
+  top: 0.42em;
+  width: 0.5em;
+  height: 0.25em;
+  border-left: 2px solid #fff;
+  border-bottom: 2px solid #fff;
+  transform: rotate(-45deg);
+}
+
+/* 当任务列表项被选中时，复选框样式不干扰 */
+.milkdown-host .ProseMirror li[data-item-type="task"].ProseMirror-selectednode::before {
+  border-color: var(--color-accent);
+}
+
+.milkdown-host .ProseMirror li[data-item-type="task"] .ProseMirror {
+  padding-left: 0;
+}

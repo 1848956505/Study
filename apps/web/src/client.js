@@ -215,6 +215,7 @@ const formatButtons = [
   { key: 'table', label: '表格' },
   { key: 'internal-link', label: '内部链接' },
   { key: 'image', label: '图片' },
+  { key: 'task-list', label: '任务列表' },
   { key: 'bold', label: '加粗' },
   { key: 'italic', label: '斜体' },
   { key: 'quote', label: '引用' },
@@ -1837,7 +1838,7 @@ function renderFileMenu(note) {
           : ''}
       <div class="editor-menu-divider" aria-hidden="true"></div>
       <button type="button" class="editor-menu-item" data-file-menu-action="export-markdown" ${hasEditableNote ? '' : 'disabled'}>导出 Markdown</button>
-      <button type="button" class="editor-menu-item" data-file-menu-action="export-pdf" ${hasEditableNote ? '' : 'disabled'}>导出 PDF</button>
+      <button type="button" class="editor-menu-item" data-file-menu-action="export-pdf" ${hasEditableNote ? '' : 'disabled'}>导出</button>
     </div>
   `;
 }
@@ -4465,8 +4466,8 @@ function exportCurrentNoteAsPdfStable(note) {
 
   const editorBody = document.querySelector('#milkdown-editor .ProseMirror');
   const previewHtml = editorBody?.innerHTML ?? `<pre>${escapeHtml(state.draftMarkdown || note.rawMarkdown)}</pre>`;
-  const exportName = buildExportFileName(note.title, 'pdf');
-  const printableHtml = `
+  const exportName = buildExportFileName(note.title, 'html');
+  const styledHtml = `
     <!doctype html>
     <html lang="zh-CN">
       <head>
@@ -4475,39 +4476,25 @@ function exportCurrentNoteAsPdfStable(note) {
         <style>
           body { font-family: "Segoe UI", "PingFang SC", sans-serif; margin: 40px auto; max-width: 760px; color: #142033; line-height: 1.8; }
           h1, h2, h3 { line-height: 1.3; }
-          pre { padding: 16px; background: #10182b; color: #eff4ff; overflow: auto; }
+          pre { padding: 16px; background: #10182b; color: #eff4ff; overflow: auto; border-radius: 12px; }
           code { font-family: Consolas, monospace; }
           blockquote { border-left: 3px solid #4c72ff; padding-left: 14px; color: #51607a; }
           img { max-width: 100%; }
+          table { width: 100%; border-collapse: collapse; }
+          th, td { padding: 8px 10px; border: 1px solid #d0d7e2; text-align: left; }
+          th { background: #f0f4fa; }
+          li[data-item-type="task"] { list-style: none; position: relative; padding-left: 1.6em; }
+          li[data-item-type="task"]::before { content: '☐'; position: absolute; left: 0; font-size: 1.1em; }
+          li[data-item-type="task"][data-checked="true"]::before { content: '☑'; }
         </style>
       </head>
       <body>
         <article>${previewHtml}</article>
-        <script>
-          window.addEventListener('load', function () {
-            window.setTimeout(function () {
-              window.focus();
-              window.print();
-            }, 120);
-          });
-        </script>
       </body>
     </html>
   `;
-  const exportBlob = new Blob([printableHtml], { type: 'text/html;charset=utf-8' });
-  const exportUrl = URL.createObjectURL(exportBlob);
-  const exportWindow = window.open(exportUrl, '_blank');
-
-  if (!exportWindow) {
-    URL.revokeObjectURL(exportUrl);
-    flashStatus('导出 PDF 失败：浏览器拦截了弹窗');
-    return;
-  }
-
-  window.setTimeout(() => {
-    URL.revokeObjectURL(exportUrl);
-  }, 60000);
-  flashStatus(`已准备导出：${exportName}`);
+  triggerFileDownload(exportName, styledHtml, 'text/html;charset=utf-8');
+  flashStatus(`已导出：${exportName}`);
 }
 
 function triggerFileDownload(fileName, content, mimeType) {
@@ -4951,19 +4938,6 @@ function renderTableInsertDialog() {
       <div class="editor-table-dialog-title" id="editor-table-dialog-title">插入表格</div>
       <div class="editor-table-dialog-grid">
         <label class="editor-table-dialog-field">
-          <span>列</span>
-          <input
-            type="number"
-            min="1"
-            max="20"
-            step="1"
-            inputmode="numeric"
-            class="editor-table-dialog-input"
-            data-table-dialog-field="cols"
-            value="${escapeAttribute(state.editorTableDialog.cols)}"
-          />
-        </label>
-        <label class="editor-table-dialog-field">
           <span>行</span>
           <input
             type="number"
@@ -4974,6 +4948,19 @@ function renderTableInsertDialog() {
             class="editor-table-dialog-input"
             data-table-dialog-field="rows"
             value="${escapeAttribute(state.editorTableDialog.rows)}"
+          />
+        </label>
+        <label class="editor-table-dialog-field">
+          <span>列</span>
+          <input
+            type="number"
+            min="1"
+            max="20"
+            step="1"
+            inputmode="numeric"
+            class="editor-table-dialog-input"
+            data-table-dialog-field="cols"
+            value="${escapeAttribute(state.editorTableDialog.cols)}"
           />
         </label>
       </div>

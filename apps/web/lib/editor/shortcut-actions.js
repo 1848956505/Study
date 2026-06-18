@@ -14,6 +14,7 @@ export const EDITOR_SHORTCUT_LABELS = {
   'heading-6': 'Ctrl+6',
   ordered: 'Ctrl+Shift+{',
   bullet: 'Ctrl+Shift+}',
+  'task-list': 'Ctrl+Shift+X',
   indent: 'Tab',
   outdent: 'Shift+Tab'
 };
@@ -70,6 +71,8 @@ export function resolveEditorShortcutAction({
       return 'ordered';
     case '}':
       return 'bullet';
+    case 'x':
+      return 'task-list';
     default:
       break;
   }
@@ -79,6 +82,8 @@ export function resolveEditorShortcutAction({
       return 'ordered';
     case 'BracketRight':
       return 'bullet';
+    case 'KeyX':
+      return 'task-list';
     default:
       return null;
   }
