@@ -20,7 +20,7 @@ assert.match(
 );
 assert.match(
   milkdownEntry,
-  /async run\(commandKey\) \{/,
+  /async run\(commandKey,\s*options = \{\}\) \{/,
   'editor host should expose a single run entrypoint for menu actions and shortcuts'
 );
 assert.match(
@@ -30,8 +30,28 @@ assert.match(
 );
 assert.match(
   milkdownEntry,
-  /insertText\(' {4}', view\.state\.selection\.from, view\.state\.selection\.to\)/,
+  /function insertTextIndent\(view\)[\s\S]*insertText\(' {4}', state\.selection\.from, state\.selection\.to\)/,
   'plain-text Tab indentation should insert four spaces for a noticeable indent step'
+);
+assert.match(
+  milkdownEntry,
+  /resolveIndentBehavior\(\{[\s\S]*inListItem: Boolean\(listItemAncestor\)[\s\S]*inBlockquote: Boolean\(blockquoteAncestor\)/,
+  'editor host should route Tab and Shift+Tab through Typora-aware indentation behavior'
+);
+assert.match(
+  milkdownEntry,
+  /resolveBlockCommandBehavior\(commandKey\) === 'insert-below-current-block'[\s\S]*insertBlockBelowSelection\(this\.editor, commandKey, options\)/,
+  'editor host should run insertion-type blocks below the current block instead of converting it in place'
+);
+assert.match(
+  milkdownEntry,
+  /findAncestorOfType\(\$from, new Set\(\['table'\]\)\)[\s\S]*exitTableWithParagraph\(view, paragraphNodeType, tableAncestor\.depth\)/,
+  'Enter inside a table should exit the table into a paragraph below it'
+);
+assert.match(
+  milkdownEntry,
+  /function handleStructuredBackspace\(view\)[\s\S]*resolveBackspaceBehavior\(\{[\s\S]*parentType,[\s\S]*parentIsBlank,[\s\S]*atLineStart:/,
+  'editor host should explicitly inspect Backspace on empty structured blocks before default ProseMirror deletion runs'
 );
 assert.match(
   milkdownEntry,

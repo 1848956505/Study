@@ -262,12 +262,56 @@ let currentEditorNoteId = null;
 let pendingEditorNoteId = null;
 let editorMountToken = 0;
 
+/** 笔记编辑器滚动位置记录（noteId → scrollTop） */
+const editorScrollPositions = {};
+const SCROLL_POSITIONS_KEY = 'study-accelerator.editor-scroll-positions';
+
+function saveCurrentEditorScrollPosition() {
+  const root = document.getElementById('milkdown-editor');
+  if (root && currentEditorNoteId && root.scrollTop > 0) {
+    editorScrollPositions[currentEditorNoteId] = root.scrollTop;
+  }
+}
+
+function restoreEditorScrollPosition(noteId) {
+  const root = document.getElementById('milkdown-editor');
+  const saved = editorScrollPositions[noteId];
+  if (root && typeof saved === 'number' && saved > 0) {
+    requestAnimationFrame(() => {
+      root.scrollTop = saved;
+    });
+  }
+}
+
+function persistScrollPositions() {
+  try {
+    window.localStorage.setItem(SCROLL_POSITIONS_KEY, JSON.stringify(editorScrollPositions));
+  } catch (error) {
+    // Ignore cache failures.
+  }
+}
+
+function loadScrollPositions() {
+  try {
+    const raw = window.localStorage.getItem(SCROLL_POSITIONS_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      Object.assign(editorScrollPositions, parsed);
+    }
+  } catch (error) {
+    // Ignore cache failures.
+  }
+}
+
 initialize();
 
 function initialize() {
   cacheElements();
   renderRail();
   bindEvents();
+
+  // 读取本地保存的编辑器滚动位置
+  loadScrollPositions();
 
   const initialSnapshot = readInitialWorkspaceSnapshot();
   const cachedSnapshot = readBackendCache();
@@ -1022,6 +1066,11 @@ function bindEvents() {
     }
     void persistDraft({ immediate: true });
   });
+
+  window.addEventListener('beforeunload', () => {
+    saveCurrentEditorScrollPosition();
+    persistScrollPositions();
+  });
 }
 
 async function loadWorkspaceData({ cachedSnapshot = null } = {}) {
@@ -1104,6 +1153,8 @@ function persistBackendCache() {
   } catch (error) {
     // Ignore cache failures in restricted browser contexts.
   }
+  saveCurrentEditorScrollPosition();
+  persistScrollPositions();
 }
 
 function readBackendCache() {
@@ -4000,6 +4051,7 @@ async function selectNote(noteId, { syncFolder = false, ensureTab = true } = {})
   }
 
   await loadCurrentNoteSideData();
+  saveCurrentEditorScrollPosition();
   renderAll();
   flashStatus(`已切换到：${note.title}`);
 }
@@ -4713,6 +4765,9 @@ function mountEditorHost(noteId, markdown) {
     pendingEditorNoteId = null;
     renderEditorSaveIndicator();
     renderStatus();
+
+    // 恢复之前保存的滚动位置
+    restoreEditorScrollPosition(noteId);
   })().catch((error) => {
     pendingEditorNoteId = null;
     flashStatus(error.message || '编辑器加载失败');

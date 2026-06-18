@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import {
+  resolveBackspaceBehavior,
+  resolveBlockCommandBehavior,
   resolveEnterBehavior,
+  resolveIndentBehavior,
   shouldKeepTrailingBlank
 } from '../lib/editor/enter-behavior.js';
 
@@ -86,12 +89,166 @@ runTest('resolveEnterBehavior keeps continuing non-empty structured blocks', () 
   );
 });
 
+runTest('resolveEnterBehavior never exits code blocks with Enter', () => {
+  assert.equal(
+    resolveEnterBehavior({
+      parentType: 'code_block',
+      parentIsBlank: true
+    }),
+    'continue-structured-block'
+  );
+});
+
 runTest('resolveEnterBehavior stays normal in ordinary paragraphs', () => {
   assert.equal(
     resolveEnterBehavior({
       parentType: 'paragraph',
       parentIsBlank: false,
       previousSiblingType: 'paragraph'
+    }),
+    'default'
+  );
+});
+
+runTest('resolveIndentBehavior routes Tab by Typora block context', () => {
+  assert.equal(
+    resolveIndentBehavior({
+      direction: 'in',
+      inTable: true,
+      inListItem: false,
+      inBlockquote: false,
+      parentType: 'paragraph'
+    }),
+    'table-navigation'
+  );
+
+  assert.equal(
+    resolveIndentBehavior({
+      direction: 'in',
+      inTable: false,
+      inListItem: true,
+      inBlockquote: true,
+      parentType: 'paragraph'
+    }),
+    'sink-list-item'
+  );
+
+  assert.equal(
+    resolveIndentBehavior({
+      direction: 'out',
+      inTable: false,
+      inListItem: true,
+      inBlockquote: true,
+      parentType: 'paragraph'
+    }),
+    'lift-list-item'
+  );
+
+  assert.equal(
+    resolveIndentBehavior({
+      direction: 'in',
+      inTable: false,
+      inListItem: false,
+      inBlockquote: true,
+      parentType: 'paragraph'
+    }),
+    'deepen-blockquote'
+  );
+
+  assert.equal(
+    resolveIndentBehavior({
+      direction: 'out',
+      inTable: false,
+      inListItem: false,
+      inBlockquote: true,
+      parentType: 'paragraph'
+    }),
+    'lift-block'
+  );
+
+  assert.equal(
+    resolveIndentBehavior({
+      direction: 'in',
+      inTable: false,
+      inListItem: false,
+      inBlockquote: false,
+      parentType: 'paragraph'
+    }),
+    'indent-textblock'
+  );
+});
+
+runTest('resolveIndentBehavior keeps code indentation textual', () => {
+  assert.equal(
+    resolveIndentBehavior({
+      direction: 'in',
+      inTable: false,
+      inListItem: false,
+      inBlockquote: false,
+      parentType: 'code_block'
+    }),
+    'insert-code-indent'
+  );
+
+  assert.equal(
+    resolveIndentBehavior({
+      direction: 'out',
+      inTable: false,
+      inListItem: false,
+      inBlockquote: false,
+      parentType: 'code_block'
+    }),
+    'remove-code-indent'
+  );
+});
+
+runTest('resolveBlockCommandBehavior separates conversion blocks from insertion blocks', () => {
+  assert.equal(resolveBlockCommandBehavior('heading-2'), 'convert-current-block');
+  assert.equal(resolveBlockCommandBehavior('bullet'), 'convert-current-block');
+  assert.equal(resolveBlockCommandBehavior('ordered'), 'convert-current-block');
+  assert.equal(resolveBlockCommandBehavior('quote'), 'convert-current-block');
+
+  assert.equal(resolveBlockCommandBehavior('table'), 'insert-below-current-block');
+  assert.equal(resolveBlockCommandBehavior('codeblock'), 'insert-below-current-block');
+  assert.equal(resolveBlockCommandBehavior('hr'), 'insert-below-current-block');
+  assert.equal(resolveBlockCommandBehavior('image'), 'insert-below-current-block');
+});
+
+runTest('resolveBackspaceBehavior exits empty list items at the line start', () => {
+  assert.equal(
+    resolveBackspaceBehavior({
+      atLineStart: true,
+      parentType: 'list_item',
+      parentIsBlank: true
+    }),
+    'exit-structured-block'
+  );
+
+  assert.equal(
+    resolveBackspaceBehavior({
+      atLineStart: true,
+      parentType: 'blockquote',
+      parentIsBlank: true
+    }),
+    'exit-structured-block'
+  );
+});
+
+runTest('resolveBackspaceBehavior leaves ordinary text deletion to the editor default', () => {
+  assert.equal(
+    resolveBackspaceBehavior({
+      atLineStart: false,
+      parentType: 'list_item',
+      parentIsBlank: true
+    }),
+    'default'
+  );
+
+  assert.equal(
+    resolveBackspaceBehavior({
+      atLineStart: true,
+      parentType: 'paragraph',
+      parentIsBlank: true
     }),
     'default'
   );

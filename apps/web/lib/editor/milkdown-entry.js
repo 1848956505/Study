@@ -5,7 +5,7 @@ import { clipboard } from '@milkdown/plugin-clipboard';
 import { history, redoCommand, undoCommand } from '@milkdown/plugin-history';
 import { listener, listenerCtx } from '@milkdown/plugin-listener';
 import { getNodeFromSchema } from '@milkdown/prose';
-import { liftEmptyBlock, splitBlock } from '@milkdown/prose/commands';
+import { lift, liftEmptyBlock, splitBlock } from '@milkdown/prose/commands';
 import { Slice } from '@milkdown/prose/model';
 import { Plugin, PluginKey, TextSelection } from '@milkdown/prose/state';
 import { Decoration, DecorationSet } from '@milkdown/prose/view';
@@ -40,7 +40,13 @@ import { tableBlock, tableBlockConfig } from '@milkdown/components/table-block';
 import { imageBlockConfig, defaultImageBlockConfig } from '@milkdown/components/image-block';
 import { $command, $prose, callCommand, getMarkdown, replaceAll } from '@milkdown/utils';
 import { enhancedImageBlockComponent } from './enhanced-image-block.js';
-import { resolveEnterBehavior, shouldKeepTrailingBlank } from './enter-behavior.js';
+import {
+  resolveBackspaceBehavior,
+  resolveBlockCommandBehavior,
+  resolveEnterBehavior,
+  resolveIndentBehavior,
+  shouldKeepTrailingBlank
+} from './enter-behavior.js';
 import { resolveMatchNavigationIndex } from './find-navigation.js';
 import { removeSpuriousEmptyCodeBlocks, shouldPreferPlainMarkdown } from './markdown-paste.js';
 
@@ -1010,15 +1016,27 @@ async function handleIndentShortcut(editor) {
   const schema = editor.ctx.get(schemaCtx);
   const { $from } = view.state.selection;
 
-  // 表格内 Tab：交给内置 cellNavigation keymap 处理（移到下一格）
-  if (findAncestorOfType($from, new Set(['table', 'table_cell', 'table_header']))) {
+  const tableAncestor = findAncestorOfType($from, new Set(['table', 'table_cell', 'table_header']));
+  const listItemAncestor = findAncestorOfType($from, new Set(['list_item']));
+  const blockquoteAncestor = findAncestorOfType($from, new Set(['blockquote']));
+  const behavior = resolveIndentBehavior({
+    direction: 'in',
+    inTable: Boolean(tableAncestor),
+    inListItem: Boolean(listItemAncestor),
+    inBlockquote: Boolean(blockquoteAncestor),
+    parentType: $from.parent.type.name
+  });
+
+  if (behavior === 'table-navigation') {
     return false;
   }
 
-  const listItemAncestor = findAncestorOfType($from, new Set(['list_item']));
-  if (listItemAncestor) {
+  if (behavior === 'insert-code-indent') {
+    return insertTextIndent(view);
+  }
+
+  if (behavior === 'sink-list-item') {
     const listItemNode = listItemAncestor.node;
-    // 检测续写段落：光标所在的 paragraph 不是 list_item 的首个子块
     const parent = $from.parent;
     const isContinuation = parent.type.name === 'paragraph'
       && listItemNode.firstChild !== parent
@@ -1031,8 +1049,41 @@ async function handleIndentShortcut(editor) {
     return executeCallCommand(editor, sinkListItemCommand.key);
   }
 
-  // 纯段落 Tab：Typora 不做任何操作
+  if (behavior === 'deepen-blockquote') {
+    return executeCallCommand(editor, wrapInBlockquoteCommand.key);
+  }
+
+  if (behavior === 'indent-textblock') {
+    return insertTextIndent(view);
+  }
+
   return false;
+}
+
+function insertTextIndent(view) {
+  const { state } = view;
+  const tr = state.tr.insertText('    ', state.selection.from, state.selection.to);
+  view.dispatch(tr.scrollIntoView());
+  view.focus();
+  return true;
+}
+
+function removeTextIndent(view) {
+  const { state } = view;
+  const { $from } = state.selection;
+  const text = $from.parent.textContent;
+  const lineStartOffset = text.lastIndexOf('\n', Math.max(0, $from.parentOffset - 1)) + 1;
+  const removable = text.slice(lineStartOffset, lineStartOffset + 4).match(/^( {1,4}|\t)/)?.[0] ?? '';
+
+  if (!removable) {
+    return false;
+  }
+
+  const lineStartPos = $from.start() + lineStartOffset;
+  const tr = state.tr.delete(lineStartPos, lineStartPos + removable.length);
+  view.dispatch(tr.scrollIntoView());
+  view.focus();
+  return true;
 }
 
 /**
@@ -1132,16 +1183,28 @@ async function handleOutdentShortcut(editor) {
   const schema = editor.ctx.get(schemaCtx);
   const { $from } = view.state.selection;
 
-  // 表格内 Shift+Tab：交给内置 keymap 处理（移到前一格）
-  if (findAncestorOfType($from, new Set(['table', 'table_cell', 'table_header']))) {
+  const tableAncestor = findAncestorOfType($from, new Set(['table', 'table_cell', 'table_header']));
+  const listItemAncestor = findAncestorOfType($from, new Set(['list_item']));
+  const blockquoteAncestor = findAncestorOfType($from, new Set(['blockquote']));
+  const behavior = resolveIndentBehavior({
+    direction: 'out',
+    inTable: Boolean(tableAncestor),
+    inListItem: Boolean(listItemAncestor),
+    inBlockquote: Boolean(blockquoteAncestor),
+    parentType: $from.parent.type.name
+  });
+
+  if (behavior === 'table-navigation') {
     return false;
   }
 
-  const listItemAncestor = findAncestorOfType($from, new Set(['list_item']));
-  if (listItemAncestor) {
+  if (behavior === 'remove-code-indent') {
+    return removeTextIndent(view);
+  }
+
+  if (behavior === 'lift-list-item') {
     const listItemNode = listItemAncestor.node;
     const parent = $from.parent;
-    // 检测续写段落
     const isContinuation = parent.type.name === 'paragraph'
       && listItemNode.firstChild !== parent
       && listItemNode.childCount > 1;
@@ -1153,7 +1216,16 @@ async function handleOutdentShortcut(editor) {
     return executeCallCommand(editor, liftListItemCommand.key);
   }
 
-  // 纯段落 Shift+Tab：Typora 不做任何操作
+  if (behavior === 'lift-block') {
+    return lift(view.state, (tr) => {
+      view.dispatch(tr.scrollIntoView());
+    });
+  }
+
+  if (behavior === 'outdent-textblock') {
+    return removeTextIndent(view);
+  }
+
   return false;
 }
 
@@ -1224,6 +1296,52 @@ function outdentContinuationParagraph(editor, view, schema, $from, listItemAnces
   tr = tr.setSelection(TextSelection.create(tr.doc, cursorPos)).scrollIntoView();
   view.dispatch(tr);
   view.focus();
+  return true;
+}
+
+async function insertBlockBelowSelection(editor, commandKey, options = {}) {
+  const view = editor.ctx.get(editorViewCtx);
+  const schema = editor.ctx.get(schemaCtx);
+  const paragraphNodeType = getNodeFromSchema('paragraph', schema);
+  const resolve = commandResolvers[commandKey];
+
+  if (!paragraphNodeType || !resolve) {
+    return false;
+  }
+
+  if (!insertParagraphBelowSelection(view, paragraphNodeType)) {
+    return false;
+  }
+
+  const { key, payload } = resolve(options);
+  const result = await editor.action(callCommand(key, payload));
+  syncTableHandleLabels(editor.ctx.get(rootCtx), null);
+  view.focus();
+  return result;
+}
+
+function insertParagraphBelowSelection(view, paragraphNodeType) {
+  if (!paragraphNodeType) {
+    return false;
+  }
+
+  const { state } = view;
+  const { $from } = state.selection;
+  const tableAncestor = findAncestorOfType($from, new Set(['table']));
+  let blockDepth = tableAncestor?.depth ?? $from.depth;
+
+  while (blockDepth > 0 && !tableAncestor && !$from.node(blockDepth).isTextblock) {
+    blockDepth -= 1;
+  }
+
+  if (blockDepth <= 0) {
+    return false;
+  }
+
+  const insertPos = $from.after(blockDepth);
+  const tr = state.tr.insert(insertPos, paragraphNodeType.create());
+  tr.setSelection(TextSelection.create(tr.doc, insertPos + 1));
+  view.dispatch(tr.scrollIntoView());
   return true;
 }
 
@@ -1392,6 +1510,19 @@ function exitCodeBlock(view, paragraphNodeType, depth) {
   return true;
 }
 
+function exitTableWithParagraph(view, paragraphNodeType, depth) {
+  if (!paragraphNodeType || typeof depth !== 'number') {
+    return false;
+  }
+
+  const { state } = view;
+  const insertPos = state.selection.$from.after(depth);
+  const tr = state.tr.insert(insertPos, paragraphNodeType.create());
+  tr.setSelection(TextSelection.create(tr.doc, insertPos + 1));
+  view.dispatch(tr.scrollIntoView());
+  return true;
+}
+
 function handleTrailingBlankEnter(view, paragraphNodeType) {
   if (!paragraphNodeType) {
     return false;
@@ -1414,6 +1545,33 @@ function handleTrailingBlankEnter(view, paragraphNodeType) {
   return true;
 }
 
+function handleStructuredBackspace(view) {
+  const { state } = view;
+  if (!state.selection.empty || !state.selection.$from.parent.isTextblock) {
+    return false;
+  }
+
+  const { $from } = state.selection;
+  const structuredContext = getStructuredContext($from);
+  const parentType = structuredContext?.type ?? $from.parent.type.name;
+  const parentIsBlank = structuredContext?.type === 'code_block'
+    ? getCurrentLineText($from.parent.textContent, $from.parentOffset).trim().length === 0
+    : $from.parent.textContent.trim().length === 0;
+  const behavior = resolveBackspaceBehavior({
+    parentType,
+    parentIsBlank,
+    atLineStart: $from.parentOffset === 0
+  });
+
+  if (behavior !== 'exit-structured-block') {
+    return false;
+  }
+
+  return liftEmptyBlock(state, (tr) => {
+    view.dispatch(tr.scrollIntoView());
+  });
+}
+
 const enhancedEnterBehavior = $prose((ctx) => {
   const schema = ctx.get(schemaCtx);
   const paragraphNodeType = getNodeFromSchema('paragraph', schema);
@@ -1422,6 +1580,20 @@ const enhancedEnterBehavior = $prose((ctx) => {
     key: new PluginKey('STUDY_ENHANCED_ENTER_BEHAVIOR'),
     props: {
       handleKeyDown(view, event) {
+        if (
+          event.key === 'Backspace'
+          && !event.shiftKey
+          && !event.altKey
+          && !event.metaKey
+          && !event.ctrlKey
+        ) {
+          const handled = handleStructuredBackspace(view);
+          if (handled) {
+            event.preventDefault();
+          }
+          return handled;
+        }
+
         if (
           event.key !== 'Enter'
           || event.shiftKey
@@ -1438,6 +1610,12 @@ const enhancedEnterBehavior = $prose((ctx) => {
         }
 
         const { $from } = state.selection;
+        const tableAncestor = findAncestorOfType($from, new Set(['table']));
+        if (tableAncestor) {
+          event.preventDefault();
+          return exitTableWithParagraph(view, paragraphNodeType, tableAncestor.depth);
+        }
+
         const structuredContext = getStructuredContext($from);
         const parentType = structuredContext?.type ?? $from.parent.type.name;
         const parentIsBlank = structuredContext?.type === 'code_block'
@@ -1643,6 +1821,10 @@ export class MilkdownHost {
   async run(commandKey, options = {}) {
     await this.ready;
     const view = this.editor.ctx.get(editorViewCtx);
+    if (resolveBlockCommandBehavior(commandKey) === 'insert-below-current-block') {
+      return insertBlockBelowSelection(this.editor, commandKey, options);
+    }
+
     if (commandKey === 'paragraph-above') {
       return insertParagraphNearSelection(this.editor, 'above');
     }
