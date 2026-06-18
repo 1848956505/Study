@@ -334,8 +334,8 @@
       "spaceId": "space-demo",
       "folderId": "folder-item-1781343944941",
       "title": "知识点",
-      "rawMarkdown": "# 知识点\n\n# 知识点是什么？\n\n* 是卡片状\n\n* 其中包含：\n\n  * 标题、核心解释、原文依据\n\n    ```\n    知识点标题\n    核心解释：用自己的话总结这个知识点\n    原文依据：引用自笔记中的若干段原文\n    ```\n\n  * 字段包\n\n* <br />\n",
-      "plainText": "知识点 知识点是什么？ 是卡片状 其中包含： 标题、核心解释、原文依据 字段包 <br /",
+      "rawMarkdown": "# 知识点\n\n# 知识点是什么？\n\n* 是卡片状\n\n* 其中包含：\n\n  * 标题、核心解释、原文依据\n\n    ```\n    知识点标题\n    核心解释：用自己的话总结这个知识点\n    原文依据：引用自笔记中的若干段原文\n    ```\n\n    比如：\n\n    ```\n    知识点：Cache 中的 Tag 位\n\n    核心解释：\n    Tag 位用于判断当前 Cache 块中存放的是主存中的哪个块。\n    访问地址时，CPU 会先根据 Cache 块号找到对应位置，再比较 Tag 位判断是否命中。\n\n    原文依据：\n    1. “Cache 地址由 Tag、Index、Offset 组成……”\n    2. “Tag 用于区分映射到同一 Cache 行的不同主存块……”\n    ```\n\n  * 字段有：\n\n    ```\n    标题\n    核心解释\n    原文引用\n    来源笔记\n    标签\n    掌握状态\n    关联知识点\n    AI 操作按钮\n    ```\n\n    <br />\n",
+      "plainText": "知识点 知识点是什么？ 是卡片状 其中包含： 标题、核心解释、原文依据 比如： 字段有： <br /",
       "internalLinks": [],
       "status": "draft",
       "sourceType": "manual",
@@ -343,7 +343,7 @@
       "deleted": false,
       "tagIds": [],
       "createdAt": "2026-06-18T02:55:29.111Z",
-      "updatedAt": "2026-06-18T03:10:31.050Z"
+      "updatedAt": "2026-06-18T03:21:22.430Z"
     }
   ],
   "attachments": [

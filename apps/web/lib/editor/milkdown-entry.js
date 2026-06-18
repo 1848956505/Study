@@ -1007,37 +1007,223 @@ async function handleListShortcut(editor, commandKey) {
 
 async function handleIndentShortcut(editor) {
   const view = editor.ctx.get(editorViewCtx);
-  const listItemAncestor = findAncestorOfType(view.state.selection.$from, new Set(['list_item']));
+  const schema = editor.ctx.get(schemaCtx);
+  const { $from } = view.state.selection;
+
+  // 表格内 Tab：交给内置 cellNavigation keymap 处理（移到下一格）
+  if (findAncestorOfType($from, new Set(['table', 'table_cell', 'table_header']))) {
+    return false;
+  }
+
+  const listItemAncestor = findAncestorOfType($from, new Set(['list_item']));
   if (listItemAncestor) {
+    const listItemNode = listItemAncestor.node;
+    // 检测续写段落：光标所在的 paragraph 不是 list_item 的首个子块
+    const parent = $from.parent;
+    const isContinuation = parent.type.name === 'paragraph'
+      && listItemNode.firstChild !== parent
+      && listItemNode.childCount > 1;
+
+    if (isContinuation) {
+      return indentContinuationParagraph(editor, view, schema, $from, listItemAncestor);
+    }
+
     return executeCallCommand(editor, sinkListItemCommand.key);
   }
 
-  const tr = view.state.tr.insertText('    ', view.state.selection.from, view.state.selection.to);
-  view.dispatch(tr.scrollIntoView());
+  // 纯段落 Tab：Typora 不做任何操作
+  return false;
+}
+
+/**
+ * Tab 在续写段落上 → 将其转为嵌套列表项
+ *
+ * 转换前：                      转换后：
+ * - Item 1                     - Item 1
+ *   continuation (cursor)        - continuation (cursor)
+ */
+function indentContinuationParagraph(editor, view, schema, $from, listItemAncestor) {
+  const bulletListNodeType = getNodeFromSchema('bullet_list', schema);
+  const listItemNodeType = getNodeFromSchema('list_item', schema);
+  const paragraphNodeType = getNodeFromSchema('paragraph', schema);
+  if (!bulletListNodeType || !listItemNodeType || !paragraphNodeType) {
+    return false;
+  }
+
+  const listItemNode = listItemAncestor.node;
+  const listItemPos = listItemAncestor.pos;
+
+  // 找出续写段落在 list_item 中的索引
+  let childIndex = -1;
+  listItemNode.forEach((child, offset, index) => {
+    if (child === $from.parent) childIndex = index;
+  });
+  if (childIndex <= 0) return false;
+
+  // 找到续写段落之后是否已有嵌套列表（紧跟在续写段落后的 bullet_list/ordered_list）
+  let existingNestedList = null;
+  let existingNestedIndex = -1;
+  listItemNode.forEach((child, offset, index) => {
+    if (index > childIndex && (child.type.name === 'bullet_list' || child.type.name === 'ordered_list')) {
+      if (!existingNestedList) {
+        existingNestedList = child;
+        existingNestedIndex = index;
+      }
+    }
+  });
+
+  // 重建 list_item 的子节点
+  const newChildren = [];
+  let cursorTarget = -1;
+
+  listItemNode.forEach((child, offset, index) => {
+    if (index < childIndex) {
+      // 续写段落之前的内容：保留
+      newChildren.push(child);
+    } else if (index === childIndex) {
+      // 续写段落：转为嵌套列表项
+      const newContParagraph = paragraphNodeType.create(null, child.content);
+      const newContItem = listItemNodeType.create({}, [newContParagraph]);
+
+      if (existingNestedList) {
+        // 已有嵌套列表 → 将新列表项追加到其中
+        const extendedChildren = [];
+        existingNestedList.forEach((nestedChild) => extendedChildren.push(nestedChild));
+        extendedChildren.push(newContItem);
+        const extendedList = existingNestedList.type.create(existingNestedList.attrs, extendedChildren);
+        newChildren.push(extendedList);
+        cursorTarget = newChildren.length - 1;
+      } else {
+        // 无嵌套列表 → 创建新的
+        const newBulletList = bulletListNodeType.create(null, [newContItem]);
+        newChildren.push(newBulletList);
+        cursorTarget = newChildren.length - 1;
+      }
+    } else if (index !== existingNestedIndex) {
+      // 续写段落之后的其他内容（不包括已被替换的嵌套列表）
+      newChildren.push(child);
+    }
+  });
+
+  // 重建整个 list_item 并替换
+  const newListItem = listItemNodeType.create(listItemNode.attrs, newChildren);
+  const listItemEnd = listItemPos + listItemNode.nodeSize;
+
+  let tr = view.state.tr.replaceRangeWith(listItemPos, listItemEnd, newListItem);
+
+  // 计算光标位置
+  // cursorTarget 指向新添加的嵌套列表，其中第一个 list_item 是目标位置
+  let accumulated = listItemPos + 1;
+  for (let i = 0; i < cursorTarget; i++) {
+    accumulated += newListItem.child(i).nodeSize;
+  }
+  // cursorTarget 是一个嵌套列表，进入其第一个子项
+  const nestedList = newListItem.child(cursorTarget);
+  accumulated += 1; // 进入嵌套列表
+
+  tr = tr.setSelection(TextSelection.create(tr.doc, accumulated)).scrollIntoView();
+  view.dispatch(tr);
+  view.focus();
   return true;
 }
 
 async function handleOutdentShortcut(editor) {
   const view = editor.ctx.get(editorViewCtx);
-  const listItemAncestor = findAncestorOfType(view.state.selection.$from, new Set(['list_item']));
+  const schema = editor.ctx.get(schemaCtx);
+  const { $from } = view.state.selection;
+
+  // 表格内 Shift+Tab：交给内置 keymap 处理（移到前一格）
+  if (findAncestorOfType($from, new Set(['table', 'table_cell', 'table_header']))) {
+    return false;
+  }
+
+  const listItemAncestor = findAncestorOfType($from, new Set(['list_item']));
   if (listItemAncestor) {
+    const listItemNode = listItemAncestor.node;
+    const parent = $from.parent;
+    // 检测续写段落
+    const isContinuation = parent.type.name === 'paragraph'
+      && listItemNode.firstChild !== parent
+      && listItemNode.childCount > 1;
+
+    if (isContinuation) {
+      return outdentContinuationParagraph(editor, view, schema, $from, listItemAncestor);
+    }
+
     return executeCallCommand(editor, liftListItemCommand.key);
   }
 
-  const { state } = view;
-  if (!isSelectionInsideSingleTextblock(state, state.selection.$from.parent.type.name)) {
-    return false;
-  }
+  // 纯段落 Shift+Tab：Typora 不做任何操作
+  return false;
+}
 
-  const text = state.selection.$from.parent.textContent;
-  const removeLength = text.startsWith('\t') ? 1 : text.startsWith('  ') ? 2 : text.startsWith(' ') ? 1 : 0;
-  if (removeLength === 0) {
-    return false;
-  }
+/**
+ * Shift+Tab 在续写段落上 → 从当前 list_item 分割为独立列表项
+ *
+ * 转换前：                      转换后：
+ * - Item 1                     - Item 1
+ *   continuation (cursor)      - continuation (cursor)
+ */
+function outdentContinuationParagraph(editor, view, schema, $from, listItemAncestor) {
+  const listItemNodeType = getNodeFromSchema('list_item', schema);
+  const paragraphNodeType = getNodeFromSchema('paragraph', schema);
+  if (!listItemNodeType || !paragraphNodeType) return false;
 
-  const start = state.selection.$from.start();
-  const tr = state.tr.delete(start, start + removeLength);
-  view.dispatch(tr.scrollIntoView());
+  const listItemNode = listItemAncestor.node;
+  const listItemPos = listItemAncestor.pos;
+
+  // 找到续写段落在 list_item 中的索引
+  let childIndex = -1;
+  listItemNode.forEach((child, offset, index) => {
+    if (child === $from.parent) childIndex = index;
+  });
+  if (childIndex <= 0) return false;
+
+  // 找到父级 bullet_list/ordered_list
+  const parentList = findAncestorOfType($from, new Set(['bullet_list', 'ordered_list']));
+  if (!parentList) return false;
+
+  // 重建父列表的子节点列表，在当前位置分割续写段落
+  const parentListChildren = [];
+  let cursorTarget = -1;
+
+  parentList.node.forEach((child) => {
+    if (child === listItemNode) {
+      // 当前 list_item：只保留续写段落之前的子节点
+      const keptChildren = [];
+      child.forEach((grandchild, offset, index) => {
+        if (index < childIndex) {
+          keptChildren.push(grandchild);
+        }
+      });
+      parentListChildren.push(listItemNodeType.create(child.attrs, keptChildren));
+
+      // 创建新列表项，包含续写段落
+      const contContent = [paragraphNodeType.create(null, $from.parent.content)];
+      parentListChildren.push(listItemNodeType.create({}, contContent));
+
+      cursorTarget = parentListChildren.length - 1;
+    } else {
+      parentListChildren.push(child);
+    }
+  });
+
+  // 重建整个父列表并替换
+  const newParentList = parentList.node.type.create(parentList.node.attrs, parentListChildren);
+  const parentListEnd = parentList.pos + parentList.node.nodeSize;
+
+  let tr = view.state.tr.replaceRangeWith(parentList.pos, parentListEnd, newParentList);
+
+  // 计算光标在新建列表项中的位置
+  let cursorPos = parentList.pos + 1;
+  for (let i = 0; i < cursorTarget; i++) {
+    cursorPos += newParentList.child(i).nodeSize;
+  }
+  cursorPos += 1; // 进入新列表项内部
+
+  tr = tr.setSelection(TextSelection.create(tr.doc, cursorPos)).scrollIntoView();
+  view.dispatch(tr);
+  view.focus();
   return true;
 }
 
