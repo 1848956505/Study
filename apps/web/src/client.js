@@ -204,6 +204,7 @@ import { bindDocumentInputEvents } from '../lib/events/document-input-events.js'
 import { bindDocumentActionEvents } from '../lib/events/document-action-events.js';
 import { bindMenuEvents } from '../lib/events/menu-events.js';
 import { bindFolderTreeEvents } from '../lib/events/folder-tree-events.js';
+import { bindNoteTabEvents } from '../lib/events/note-tab-events.js';
 import { knowledgeApi } from './services/knowledge-api.js';
 
 const BACKEND_CACHE_KEY = 'study-accelerator.backend-workspace-cache';
@@ -489,6 +490,9 @@ function bindEvents() {
     // document.input：表格对话框字段 + 查找面板字段（host 通过 getter
     // 保持 live binding，编辑器切换时拿到新实例）
     getCurrentEditorHost: () => currentEditorHost,
+    // 笔记标签：tab 关闭/选中/拖拽重排 + 右键菜单
+    handleTabClose, openTabMenu, syncTabDragIndicators,
+    reorderTabs, resetTabDragState, handleTabMenuAction,
     // 滚动位置（window beforeunload）
     saveCurrentEditorScrollPosition, persistScrollPositions
   };
@@ -501,7 +505,7 @@ function bindEvents() {
   bindDocumentActionEvents({ state, elements, deps });
   bindMenuEvents({ state, elements, deps });
   bindFolderTreeEvents({ state, elements, deps });
-  // note-tab /
+  bindNoteTabEvents({ state, elements, deps });
   // editor-content / aside 由后续拆分 commit 逐步加入。
   // Claude Code 拆分 bindEvents 时迁出（commit 8，2026-06-25）：
   // 原本的 elements.folderTree 上的 10 个监听器（2 click + contextmenu +
@@ -792,84 +796,11 @@ function bindEvents() {
     void createTagAndAssignToCurrentNote(input.value);
   });
 
-  elements.noteTabs?.addEventListener('click', (event) => {
-    const closeButton = event.target.closest('[data-tab-close]');
-    if (closeButton?.dataset.tabClose) {
-      event.stopPropagation();
-      void handleTabClose(closeButton.dataset.tabClose);
-      return;
-    }
-
-    const tabButton = event.target.closest('[data-tab-note-id]');
-    if (tabButton?.dataset.tabNoteId) {
-      void selectNote(tabButton.dataset.tabNoteId, { syncFolder: true, ensureTab: true });
-    }
-  });
-
-  elements.noteTabs?.addEventListener('contextmenu', (event) => {
-    const tabButton = event.target.closest('[data-tab-note-id]');
-    if (!tabButton?.dataset.tabNoteId) {
-      return;
-    }
-
-    event.preventDefault();
-    openTabMenu({
-      x: event.clientX,
-      y: event.clientY,
-      noteId: tabButton.dataset.tabNoteId
-    });
-  });
-
-  elements.noteTabs?.addEventListener('dragstart', (event) => {
-    const tabButton = event.target.closest('[data-tab-note-id]');
-    if (!tabButton?.dataset.tabNoteId) {
-      return;
-    }
-
-    state.tabDragState.activeId = tabButton.dataset.tabNoteId;
-    state.tabDragState.overId = null;
-    event.dataTransfer.effectAllowed = 'move';
-    event.dataTransfer.setData('text/plain', tabButton.dataset.tabNoteId);
-    syncTabDragIndicators();
-  });
-
-  elements.noteTabs?.addEventListener('dragover', (event) => {
-    const tabButton = event.target.closest('[data-tab-note-id]');
-    if (!tabButton?.dataset.tabNoteId || !state.tabDragState.activeId) {
-      return;
-    }
-
-    event.preventDefault();
-    state.tabDragState.overId = tabButton.dataset.tabNoteId;
-    syncTabDragIndicators();
-  });
-
-  elements.noteTabs?.addEventListener('drop', (event) => {
-    const tabButton = event.target.closest('[data-tab-note-id]');
-    if (!tabButton?.dataset.tabNoteId || !state.tabDragState.activeId) {
-      return;
-    }
-
-    event.preventDefault();
-    state.openNoteTabs = reorderTabs(
-      state.openNoteTabs,
-      state.tabDragState.activeId,
-      tabButton.dataset.tabNoteId
-    );
-    resetTabDragState();
-  });
-
-  elements.noteTabs?.addEventListener('dragend', () => {
-    resetTabDragState();
-  });
-
-  elements.noteTabMenu?.addEventListener('click', (event) => {
-    const actionButton = event.target.closest('[data-tab-menu-action]');
-    if (!actionButton) {
-      return;
-    }
-    void handleTabMenuAction(actionButton.dataset.tabMenuAction);
-  });
+  // Claude Code 拆分 bindEvents 时迁出（commit 9，2026-06-25）：
+  // 原本的 elements.noteTabs（6 个监听器：click / contextmenu / dragstart
+  // / dragover / drop / dragend）和 elements.noteTabMenu（click）共 7 个
+  // 监听器移至 apps/web/lib/events/note-tab-events.js。tab 关闭按钮的
+  // event.stopPropagation() 保留。
 
   // （已迁出：elements.editorMenuBar.click，详见 apps/web/lib/events/menu-events.js）
 
