@@ -202,6 +202,7 @@ import { bindDocumentClickEvents } from '../lib/events/document-click-events.js'
 import { bindDocumentKeyboardEvents } from '../lib/events/document-keyboard-events.js';
 import { bindDocumentInputEvents } from '../lib/events/document-input-events.js';
 import { bindDocumentActionEvents } from '../lib/events/document-action-events.js';
+import { bindMenuEvents } from '../lib/events/menu-events.js';
 import { knowledgeApi } from './services/knowledge-api.js';
 
 const BACKEND_CACHE_KEY = 'study-accelerator.backend-workspace-cache';
@@ -497,7 +498,8 @@ function bindEvents() {
   bindDocumentKeyboardEvents({ state, elements, deps });
   bindDocumentInputEvents({ state, elements, deps });
   bindDocumentActionEvents({ state, elements, deps });
-  // menu / folder-tree / note-tab /
+  bindMenuEvents({ state, elements, deps });
+  // folder-tree / note-tab /
   // editor-content / aside 由后续拆分 commit 逐步加入。
   elements.folderTree?.addEventListener('click', (event) => {
     const clickTarget = resolveClickTarget(event.target);
@@ -661,24 +663,11 @@ function bindEvents() {
     }
   });
 
-  elements.contextMenu?.addEventListener('click', (event) => {
-    const menuItem = event.target.closest('[data-context-action]');
-    if (!menuItem) {
-      return;
-    }
-    void handleContextMenuAction(menuItem.dataset.contextAction);
-  });
-
-  elements.sectionMenu?.addEventListener('click', (event) => {
-    const menuItem = event.target.closest('[data-section-toggle]');
-    if (!menuItem) {
-      return;
-    }
-
-    const key = menuItem.dataset.sectionToggle;
-    state.secondarySections[key] = !state.secondarySections[key];
-    renderFolders();
-  });
+  // Claude Code 拆分 bindEvents 时迁出（commit 7，2026-06-25）：
+  // 原本的 elements.contextMenu.click / sectionMenu.click / editorMenuBar.click
+  // 三段（派发 [data-context-action] / 切换 [data-section-toggle] / 编辑器
+  // 菜单 toggle + 5 个动作派发）移至 apps/web/lib/events/menu-events.js。
+  // 注意 editorMenuBar 顶部 event.stopPropagation() 保留。
 
   elements.asideTabs?.addEventListener('click', (event) => {
     const button = event.target.closest('[data-aside-tab]');
@@ -1035,44 +1024,7 @@ function bindEvents() {
     void handleTabMenuAction(actionButton.dataset.tabMenuAction);
   });
 
-  elements.editorMenuBar?.addEventListener('click', (event) => {
-    event.stopPropagation();
-
-    const menuToggle = event.target.closest('[data-editor-menu-toggle]');
-    if (menuToggle?.dataset.editorMenuToggle) {
-      const menuKey = menuToggle.dataset.editorMenuToggle;
-      state.editorMenuOpen = state.editorMenuOpen === menuKey ? null : menuKey;
-      renderEditorMenuBar();
-      return;
-    }
-
-    const menuAction = event.target.closest('[data-file-menu-action]');
-    if (menuAction?.dataset.fileMenuAction) {
-      void handleFileMenuAction(menuAction.dataset.fileMenuAction);
-      return;
-    }
-
-    const editMenuAction = event.target.closest('[data-edit-menu-action]');
-    if (editMenuAction?.dataset.editMenuAction) {
-      void handleEditMenuAction(editMenuAction.dataset.editMenuAction);
-    }
-
-    const paragraphMenuAction = event.target.closest('[data-paragraph-menu-action]');
-    if (paragraphMenuAction?.dataset.paragraphMenuAction) {
-      void handleParagraphMenuAction(paragraphMenuAction.dataset.paragraphMenuAction);
-    }
-
-    const formatMenuAction = event.target.closest('[data-format-menu-action]');
-    if (formatMenuAction?.dataset.formatMenuAction) {
-      void handleFormatMenuAction(formatMenuAction.dataset.formatMenuAction);
-      return;
-    }
-
-    const viewMenuAction = event.target.closest('[data-view-menu-action]');
-    if (viewMenuAction?.dataset.viewMenuAction) {
-      void handleViewMenuAction(viewMenuAction.dataset.viewMenuAction);
-    }
-  });
+  // （已迁出：elements.editorMenuBar.click，详见 apps/web/lib/events/menu-events.js）
 
   elements.editorContent?.addEventListener('input', (event) => {
     const sourceInput = event.target.closest('[data-source-editor-input]');
