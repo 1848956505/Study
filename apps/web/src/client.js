@@ -198,6 +198,7 @@ import {
 import { validateTreeEditorName as validateNavigationTreeEditorName } from '../lib/navigation/tree-editor.js';
 import { bindSearchEvents } from '../lib/events/search-events.js';
 import { bindWindowEvents } from '../lib/events/window-events.js';
+import { bindDocumentClickEvents } from '../lib/events/document-click-events.js';
 import { knowledgeApi } from './services/knowledge-api.js';
 
 const BACKEND_CACHE_KEY = 'study-accelerator.backend-workspace-cache';
@@ -472,12 +473,16 @@ function bindEvents() {
     toggleSearchTagFilter, focusSearchInput, renderSearchShell, clearSearchFilters,
     getSearchResultNotes, selectNote, closeContextMenu, renderFolders,
     reconcileSelection, renderAll, importMarkdownFiles, flashStatus,
+    // document.click 外部点击
+    handleFormat, closeSectionMenu, closeTabMenu,
+    closeEditorMenuBar, closeEditorContextMenu,
     // 滚动位置（window beforeunload）
     saveCurrentEditorScrollPosition, persistScrollPositions
   };
 
   bindSearchEvents({ state, elements, deps });
   bindWindowEvents({ state, elements, deps });
+  bindDocumentClickEvents({ state, elements, deps });
   // window / document / menu / folder-tree / note-tab / editor-content / aside
   // 由后续拆分 commit 逐步加入。
   elements.folderTree?.addEventListener('click', (event) => {
@@ -866,32 +871,10 @@ function bindEvents() {
     void handleEditorContextMenuAction(actionButton.dataset.editorContextAction);
   });
 
-  document.addEventListener('click', (event) => {
-    const formatButton = event.target.closest('[data-format]');
-    if (!formatButton) {
-      return;
-    }
-    void handleFormat(formatButton.dataset.format);
-  });
-
-  document.addEventListener('click', (event) => {
-    if (!event.target.closest('#global-search-shell') && state.search.isOpen) {
-      state.search.isOpen = false;
-      renderSearchShell();
-    }
-    if (event.target.closest('#library-context-menu')) return;
-    if (event.target.closest('#library-section-menu')) return;
-    if (event.target.closest('#note-tab-menu')) return;
-    if (event.target.closest('#editor-menu-bar')) return;
-    if (event.target.closest('#editor-context-menu')) return;
-    if (event.target.closest('#editor-table-dialog')) return;
-    if (event.target.closest('#secondary-nav-toggle')) return;
-    closeContextMenu();
-    closeSectionMenu();
-    closeTabMenu();
-    closeEditorMenuBar();
-    closeEditorContextMenu();
-  });
+  // Claude Code 拆分 bindEvents 时迁出（commit 3，2026-06-25）：
+  // 原本的两段 document.click 监听器（格式化按钮 + 外部点击关闭菜单）
+  // 移至 apps/web/lib/events/document-click-events.js。
+  // 行为不变：选择器、事件名、关闭顺序均保持。
 
   document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape') {
