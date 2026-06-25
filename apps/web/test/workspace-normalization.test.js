@@ -1,0 +1,118 @@
+import assert from 'node:assert/strict';
+import {
+  normalizeFolderTree,
+  normalizeNotes,
+  replaceNoteInCollection
+} from '../lib/workspace-normalization.js';
+
+function runTest(name, callback) {
+  try {
+    callback();
+    console.log(`ok - ${name}`);
+  } catch (error) {
+    console.error(`not ok - ${name}`);
+    throw error;
+  }
+}
+
+runTest('normalizeFolderTree filters invalid nodes and normalizes nested folders', () => {
+  assert.deepEqual(
+    normalizeFolderTree([
+      null,
+      [],
+      { id: 123, name: null, parentId: undefined, children: [{ id: 'child', children: [null] }] },
+      { name: 'Missing id' }
+    ]),
+    [
+      {
+        id: '123',
+        name: '未命名目录',
+        parentId: null,
+        children: [
+          {
+            id: 'child',
+            name: '未命名目录',
+            parentId: null,
+            children: []
+          }
+        ]
+      }
+    ]
+  );
+});
+
+runTest('normalizeFolderTree returns an empty array for non-array input', () => {
+  assert.deepEqual(normalizeFolderTree({ id: 'folder' }), []);
+});
+
+runTest('normalizeNotes filters invalid notes and fills defaults', () => {
+  assert.deepEqual(
+    normalizeNotes([
+      undefined,
+      [],
+      {
+        id: 42,
+        title: null,
+        folderId: undefined,
+        tagIds: 'tag-a',
+        internalLinks: null,
+        rawMarkdown: undefined,
+        favorite: 1,
+        deleted: 0
+      },
+      { title: 'Missing id' }
+    ]),
+    [
+      {
+        id: '42',
+        title: '未命名笔记',
+        folderId: null,
+        tagIds: [],
+        internalLinks: [],
+        rawMarkdown: '',
+        favorite: true,
+        deleted: false
+      }
+    ]
+  );
+});
+
+runTest('normalizeNotes copies array fields instead of reusing references', () => {
+  const source = [{ id: 'note-a', tagIds: ['tag-a'], internalLinks: ['note-b'] }];
+  const [note] = normalizeNotes(source);
+
+  assert.notEqual(note.tagIds, source[0].tagIds);
+  assert.notEqual(note.internalLinks, source[0].internalLinks);
+});
+
+runTest('replaceNoteInCollection merges a normalized note into the existing collection', () => {
+  assert.deepEqual(
+    replaceNoteInCollection([
+      { id: 'note-a', title: 'Old', rawMarkdown: 'old', favorite: true },
+      { id: 'note-b', title: 'Other' }
+    ], {
+      id: 'note-a',
+      title: 'New'
+    }, {
+      rawMarkdown: 'fallback'
+    }),
+    [
+      {
+        id: 'note-a',
+        title: 'New',
+        rawMarkdown: 'fallback',
+        favorite: false,
+        folderId: null,
+        tagIds: [],
+        internalLinks: [],
+        deleted: false
+      },
+      { id: 'note-b', title: 'Other' }
+    ]
+  );
+});
+
+runTest('replaceNoteInCollection returns the original collection for invalid updates', () => {
+  const notes = [{ id: 'note-a', title: 'A' }];
+  assert.equal(replaceNoteInCollection(notes, { title: 'Missing id' }), notes);
+});

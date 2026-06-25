@@ -6,6 +6,8 @@ import { fileURLToPath } from 'node:url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const clientJs = fs.readFileSync(path.resolve(__dirname, '../src/client.js'), 'utf8');
+const menuRenderersJs = fs.readFileSync(path.resolve(__dirname, '../lib/editor/menu-renderers.js'), 'utf8');
+const previewRenderersJs = fs.readFileSync(path.resolve(__dirname, '../lib/editor/preview-renderers.js'), 'utf8');
 const mainJs = fs.readFileSync(path.resolve(__dirname, '../src/main.js'), 'utf8');
 const componentsCss = fs.readFileSync(path.resolve(__dirname, '../styles/components.css'), 'utf8');
 
@@ -15,22 +17,22 @@ assert.match(
   'workspace should store dedicated view state for task 5'
 );
 assert.match(
-  clientJs,
+  menuRenderersJs,
   /function renderViewMenu/,
   'editor menu bar should render a view menu'
 );
 assert.match(
-  clientJs,
+  menuRenderersJs,
   /data-view-menu-action=/,
   'view menu should expose actionable controls'
 );
 assert.match(
-  clientJs,
+  menuRenderersJs,
   /data-editor-menu-toggle="view"/,
   'editor menu bar should expose a view menu toggle'
 );
 assert.match(
-  clientJs,
+  previewRenderersJs,
   /class="markdown-input"/,
   'source editor view should render a markdown textarea'
 );

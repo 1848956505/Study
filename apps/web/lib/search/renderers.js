@@ -11,6 +11,30 @@ function escapeAttribute(value) {
   return escapeHtml(value).replace(/`/g, '&#96;');
 }
 
+export function renderSearchShell() {
+  return `
+      <div class="top-bar-search-control" data-open="false">
+        <span class="top-bar-search-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24">
+            <circle cx="11" cy="11" r="6"></circle>
+            <path d="M16 16l4 4"></path>
+          </svg>
+        </span>
+        <div class="top-search-chip-track" data-search-chip-track></div>
+        <input
+          id="global-search"
+          data-search-input
+          type="text"
+          placeholder="搜索笔记、标签、附件、AI 结果"
+          autocomplete="off"
+          spellcheck="false"
+        />
+        <button type="button" class="top-search-clear" data-search-clear hidden>清空</button>
+      </div>
+      <div class="search-panel-host"></div>
+    `;
+}
+
 export function renderSelectedSearchChips(selectedTags, { inlineLimit = 2 } = {}) {
   const visibleInlineTags = selectedTags.slice(0, inlineLimit);
   const overflowTagCount = Math.max(0, selectedTags.length - visibleInlineTags.length);

@@ -41,3 +41,30 @@ export function buildUniqueTagId(name, tags, { fallbackSuffix = Date.now } = {})
 
   return candidateId;
 }
+
+export function normalizeTagName(name) {
+  return String(name ?? '').trim();
+}
+
+export function findTagByName(tags, name) {
+  const normalizedName = normalizeTagName(name).toLowerCase();
+  if (!normalizedName) {
+    return null;
+  }
+
+  return (tags ?? []).find((tag) => normalizeTagName(tag?.name).toLowerCase() === normalizedName) ?? null;
+}
+
+export function buildTagInput({ name, tags, spaceId, color = '#3c68ff' }) {
+  const normalizedName = normalizeTagName(name);
+  if (!normalizedName) {
+    return null;
+  }
+
+  return {
+    id: buildUniqueTagId(normalizedName, tags),
+    spaceId,
+    name: normalizedName,
+    color
+  };
+}

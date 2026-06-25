@@ -6,11 +6,12 @@ import { fileURLToPath } from 'node:url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const clientJs = fs.readFileSync(path.resolve(__dirname, '../src/client.js'), 'utf8');
+const menuRenderersJs = fs.readFileSync(path.resolve(__dirname, '../lib/editor/menu-renderers.js'), 'utf8');
 const mainJs = fs.readFileSync(path.resolve(__dirname, '../src/main.js'), 'utf8');
-const renderViewMenuSource = clientJs.match(/function renderViewMenu[\s\S]*?function renderFileMenu/)?.[0] ?? '';
+const renderViewMenuSource = menuRenderersJs.match(/function renderViewMenu[\s\S]*?function renderFileMenu/)?.[0] ?? '';
 
 assert.match(
-  clientJs,
+  menuRenderersJs,
   /data-file-menu-action="import-markdown"/,
   'file menu should expose a Markdown import action'
 );

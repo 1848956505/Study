@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 
 import {
   renderSearchPanel,
+  renderSearchShell,
   renderSelectedSearchChips
 } from '../lib/search/renderers.js';
 
@@ -16,6 +17,14 @@ assert.match(chipHtml, /data-search-chip-remove="tag-clip"/);
 assert.match(chipHtml, /CLIP/);
 assert.match(chipHtml, /\+1/);
 assert.doesNotMatch(chipHtml, /tag-other/);
+
+const shellHtml = renderSearchShell();
+assert.match(shellHtml, /class="top-bar-search-control"/);
+assert.match(shellHtml, /data-search-input/);
+assert.match(shellHtml, /placeholder="搜索笔记、标签、附件、AI 结果"/);
+assert.match(shellHtml, /data-search-chip-track/);
+assert.match(shellHtml, /data-search-clear hidden/);
+assert.match(shellHtml, /class="search-panel-host"/);
 
 const panelHtml = renderSearchPanel({
   selectedTags: [tags[0]],

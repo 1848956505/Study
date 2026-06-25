@@ -8,14 +8,25 @@ import {
   reorderTabs
 } from '../lib/editor/tab-workspace.js';
 import {
+  buildMarkdownImportItems,
+  buildNoteExportHtml,
   buildExportFileName,
   createDuplicateTitle,
-  createUntitledName
+  createLocalDuplicateNoteInput,
+  createUntitledName,
+  deriveNoteTitleFromMarkdown,
+  getSiblingNamesForFolder,
+  getMarkdownImportStatusMessage
 } from '../lib/editor/file-menu.js';
 import {
   applyEditorPanelMatchResult,
   createOpenedEditorPanelState
 } from '../lib/editor/editor-panel-state.js';
+import {
+  createLocalDraftNote,
+  resolveDraftSaveState
+} from '../lib/editor/draft-state.js';
+import { renderEditorPanelMarkup } from '../lib/editor/editor-panel-renderers.js';
 import { resolveEditorPanelKeyboardAction } from '../lib/editor/find-navigation.js';
 import {
   captureScrollPosition,
@@ -24,7 +35,6 @@ import {
   writeScrollPositions
 } from '../lib/editor/scroll-positions.js';
 import { extractMarkdownHeadings, renderMarkdownPreview } from '../lib/markdown.js';
-import { validateSiblingName } from '../lib/tree-name-validation.js';
 import {
   createBackendSnapshot,
   mergeWorkspaceSnapshots,
@@ -37,6 +47,11 @@ import {
   readWorkspaceCache,
   writeWorkspaceCache
 } from '../lib/workspace-cache.js';
+import {
+  normalizeFolderTree,
+  normalizeNotes,
+  replaceNoteInCollection
+} from '../lib/workspace-normalization.js';
 import { buildMockWorkspaceState } from '../lib/mock-workspace.js';
 import {
   deleteFolder as deleteLocalFolderTree,
@@ -44,29 +59,65 @@ import {
   insertFolder as insertLocalFolder,
   insertNote as insertLocalNote,
   moveFolder as moveLocalFolderTree,
-  moveNote as moveLocalNoteEntry,
   renameFolder as renameLocalFolderTree,
-  renameNote as renameLocalNoteEntry,
   resolveNoteVisualType
 } from '../lib/tree-workspace.js';
+import { createLocalFolderInput } from '../lib/folders/state.js';
+import {
+  createLocalImportedNoteInput,
+  createLocalManualNoteInput,
+  emptyLocalRecycleBin,
+  moveLocalNoteToFolder,
+  permanentlyDeleteLocalNote,
+  renameLocalNote,
+  restoreLocalNote,
+  setLocalNoteFavorite,
+  softDeleteLocalNote
+} from '../lib/notes/state.js';
 import {
   getEditorShortcutLabel,
   resolveEditorShortcutAction
 } from '../lib/editor/shortcut-actions.js';
+import { EDITOR_CONTEXT_PRIMARY_ACTIONS } from '../lib/editor/context-menu-model.js';
+import { renderEditorContextMenuMarkup } from '../lib/editor/context-menu-renderers.js';
+import { renderEditorMenuBarMarkup } from '../lib/editor/menu-renderers.js';
+import { getSaveStateLabel } from '../lib/editor/save-indicator.js';
+import {
+  renderPreviewPane as renderPreviewPaneMarkup,
+  renderSourceEditorPane as renderSourceEditorPaneMarkup,
+  renderSourceEditorView as renderSourceEditorViewMarkup
+} from '../lib/editor/preview-renderers.js';
+import {
+  renderEmptyNoteTabs,
+  renderNoteTabs as renderNoteTabsMarkup
+} from '../lib/editor/tab-renderers.js';
+import { renderRichEditorHost } from '../lib/editor/view-renderers.js';
+import { resolveEditorRenderState } from '../lib/editor/view-state.js';
+import {
+  normalizeTableDialogValue,
+  renderTableInsertDialogMarkup
+} from '../lib/editor/table-dialog-renderers.js';
+import { renderNoteTabMenuItems } from '../lib/editor/tab-menu-renderers.js';
 import { renderKnowledgePointPanel } from '../lib/knowledge-points/panel.js';
+import { getKnowledgePointFormUpdates } from '../lib/knowledge-points/form.js';
 import {
   buildKnowledgePointInputFromSelection,
   buildKnowledgePointSourceInputFromSelection
 } from '../lib/knowledge-points/selection.js';
 import {
+  addLocalKnowledgePointSource,
   buildCurrentNoteKnowledgePointSources,
+  createLocalKnowledgePointAggregate,
   insertKnowledgePointCollections,
+  removeLocalKnowledgePointSource,
   removeKnowledgePointCollections,
   replaceKnowledgePointCollections,
   syncKnowledgePointMembershipCollections
 } from '../lib/knowledge-points/state.js';
 import {
-  buildUniqueTagId,
+  buildTagInput,
+  findTagByName,
+  normalizeTagName,
   removeTagFromCollections,
   upsertTag
 } from '../lib/tags/state.js';
@@ -82,6 +133,7 @@ import {
 } from '../lib/search/state.js';
 import {
   renderSearchPanel as renderSearchPanelMarkup,
+  renderSearchShell as renderSearchShellMarkup,
   renderSelectedSearchChips
 } from '../lib/search/renderers.js';
 import {
@@ -114,84 +166,40 @@ import {
   SECONDARY_SECTION_ITEMS,
   renderSectionMenuItems
 } from '../lib/navigation/section-menu-renderers.js';
-import { createClearedNoteSideData } from '../lib/sidebar/state.js';
+import {
+  createClearedNoteSideData,
+  createLocalNoteSideData
+} from '../lib/sidebar/state.js';
+import {
+  ASIDE_TABS,
+  resolveAsideContentKey
+} from '../lib/sidebar/tabs.js';
 import {
   renderAiTab,
   renderAsideEmptyInline,
+  renderAsideTabs,
   renderAsideEmptyState
 } from '../lib/sidebar/renderers.js';
 import { renderInfoTab as renderInfoTabMarkup } from '../lib/sidebar/info-panel.js';
 import { renderOutlineTab as renderOutlineTabMarkup } from '../lib/sidebar/outline-panel.js';
 import {
+  renderStatusIndicators,
+  renderStatusMeta
+} from '../lib/status/renderers.js';
+import { renderModuleRail } from '../lib/shell/rail-renderers.js';
+import { getEffectiveViewState as selectEffectiveViewState } from '../lib/shell/view-state.js';
+import {
+  buildFolderPath,
   openFolderBranch as expandFolderBranch,
   resolveFolderSelection,
   resolveNavigationSelection,
   toggleFolderOpen as toggleOpenFolderState
 } from '../lib/navigation/selection.js';
+import { validateTreeEditorName as validateNavigationTreeEditorName } from '../lib/navigation/tree-editor.js';
 import { knowledgeApi } from './services/knowledge-api.js';
 
 const BACKEND_CACHE_KEY = 'study-accelerator.backend-workspace-cache';
 const AUTOSAVE_DELAY_MS = 700;
-
-const ASIDE_TABS = [
-  { key: 'info', label: '信息' },
-  { key: 'outline', label: '大纲' },
-  { key: 'concepts', label: '知识点' },
-  { key: 'ai', label: 'AI' }
-];
-
-const editorContextPrimaryActions = ['cut', 'copy', 'paste', 'delete'];
-const editorContextFormatActions = ['bold', 'italic', 'highlight', 'codeblock', 'quote'];
-const editorContextListActions = ['ordered', 'bullet', 'task-list'];
-const editorContextIndentActions = ['outdent', 'indent'];
-const editorContextParagraphItems = [
-  'paragraph',
-  'heading-1',
-  'heading-2',
-  'heading-3',
-  'heading-4',
-  'heading-5',
-  'heading-6'
-];
-const editorContextInsertItems = [
-  'create-knowledge-point',
-  'table',
-  'hr',
-  'image',
-  'codeblock',
-  'quote',
-  'paragraph-above',
-  'paragraph-below'
-];
-const editorContextActionMeta = {
-  cut: { label: '剪切', icon: 'cut' },
-  copy: { label: '复制', icon: 'copy' },
-  paste: { label: '粘贴', icon: 'paste' },
-  delete: { label: '删除', icon: 'delete' },
-  bold: { label: '加粗', icon: 'bold' },
-  italic: { label: '斜体', icon: 'italic' },
-  highlight: { label: '高亮', icon: 'highlight' },
-  codeblock: { label: '代码块', icon: 'codeblock' },
-  quote: { label: '引用', icon: 'quote' },
-  ordered: { label: '有序列表', icon: 'ordered' },
-  bullet: { label: '无序列表', icon: 'bullet' },
-  'task-list': { label: '任务列表', icon: 'task-list' },
-  outdent: { label: '减少缩进', icon: 'outdent' },
-  indent: { label: '增加缩进', icon: 'indent' },
-  paragraph: { label: '段落' },
-  'heading-1': { label: 'H1' },
-  'heading-2': { label: 'H2' },
-  'heading-3': { label: 'H3' },
-  'heading-4': { label: 'H4' },
-  'heading-5': { label: 'H5' },
-  'heading-6': { label: 'H6' },
-  table: { label: '表格', icon: 'table' },
-  'create-knowledge-point': { label: '创建知识点' },
-  hr: { label: '水平分割线' },
-  'paragraph-above': { label: '段落（上方）' },
-  'paragraph-below': { label: '段落（下方）' },
-  image: { label: '图片' }
-};
 
 const state = {
   dataMode: 'loading',
@@ -308,52 +316,6 @@ const railItems = [
   { key: 'task', active: false },
   { key: 'review', active: false },
   { key: 'settings', active: false }
-];
-
-const formatButtons = [
-  // 插入
-  { key: 'image', label: '图片' },
-  { key: 'internal-link', label: '内部链接' },
-  { key: 'separator' },
-  // 文字格式
-  { key: 'bold', label: '加粗' },
-  { key: 'italic', label: '斜体' },
-  { key: 'strikethrough', label: '删除线' },
-  { key: 'code', label: '行内代码' },
-  { key: 'highlight', label: '高亮' }
-];
-
-const editMenuItems = [
-  { key: 'undo', label: '撤销' },
-  { key: 'redo', label: '重做' },
-  { key: 'separator' },
-  { key: 'cut', label: '剪切' },
-  { key: 'copy', label: '复制' },
-  { key: 'paste', label: '粘贴' },
-  { key: 'separator' },
-  { key: 'find', label: '查找' },
-  { key: 'replace', label: '替换' },
-  { key: 'select-all', label: '全选' }
-];
-
-
-const paragraphMenuItems = [
-  { key: 'paragraph', label: '正文' },
-  { key: 'heading-1', label: 'H1' },
-  { key: 'heading-2', label: 'H2' },
-  { key: 'heading-3', label: 'H3' },
-  { key: 'heading-4', label: 'H4' },
-  { key: 'heading-5', label: 'H5' },
-  { key: 'heading-6', label: 'H6' },
-  { key: 'separator' },
-  { key: 'bullet', label: '无序列表' },
-  { key: 'ordered', label: '有序列表' },
-  { key: 'task-list', label: '任务列表' },
-  { key: 'separator' },
-  { key: 'quote', label: '引用块' },
-  { key: 'codeblock', label: '代码块' },
-  { key: 'hr', label: '分割线' },
-  { key: 'table', label: '表格' }
 ];
 
 const elements = {};
@@ -1503,14 +1465,11 @@ function loadLocalNoteSideData(noteId) {
     return;
   }
 
-  const note = state.allNotes.find((item) => item.id === noteId);
-  state.linkedNotes = (note?.internalLinks ?? [])
-    .map((linkedId) => state.allNotes.find((item) => item.id === linkedId))
-    .filter(Boolean);
-  state.attachments = knowledgeBaseSeed.attachments.filter((attachment) => attachment.noteId === noteId);
-  state.knowledgePoints = [];
-  state.allKnowledgePoints = [];
-  state.knowledgePointTagGroups = [];
+  Object.assign(state, createLocalNoteSideData({
+    noteId,
+    notes: state.allNotes,
+    attachments: knowledgeBaseSeed.attachments
+  }));
   syncKnowledgePointMarkers();
 }
 
@@ -1526,99 +1485,7 @@ function renderRail() {
     return;
   }
 
-  elements.moduleRail.innerHTML = railItems
-    .map(
-      (item) => `
-        <button
-          type="button"
-          class="rail-item"
-          data-active="${item.active}"
-          aria-label="${getRailLabel(item.key)}"
-          title="${getRailLabel(item.key)}"
-        >
-          <span class="rail-item-icon" aria-hidden="true">${renderRailIcon(item.key)}</span>
-          <span class="rail-item-label">${getRailLabel(item.key)}</span>
-        </button>
-      `
-    )
-    .join('');
-}
-
-function getRailLabel(key) {
-  switch (key) {
-    case 'knowledge':
-      return '知识库';
-    case 'paper':
-      return '题库';
-    case 'ai':
-      return 'AI 工作台';
-    case 'task':
-      return '任务';
-    case 'review':
-      return '复盘';
-    case 'settings':
-      return '设置';
-    default:
-      return key;
-  }
-}
-
-function renderRailIcon(key) {
-  switch (key) {
-    case 'knowledge':
-      return `
-        <svg viewBox="0 0 24 24">
-          <path d="M4.5 5.5h6a3 3 0 0 1 3 3v10h-6a3 3 0 0 0-3 3z"></path>
-          <path d="M19.5 5.5h-6a3 3 0 0 0-3 3v10h6a3 3 0 0 1 3 3z"></path>
-        </svg>
-      `;
-    case 'paper':
-      return `
-        <svg viewBox="0 0 24 24">
-          <path d="M7 4.5h7l4 4v11a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-13a2 2 0 0 1 2-2z"></path>
-          <path d="M14 4.5v4h4"></path>
-          <path d="M8.5 12h7"></path>
-          <path d="M8.5 15.5h7"></path>
-        </svg>
-      `;
-    case 'ai':
-      return `
-        <svg viewBox="0 0 24 24">
-          <path d="M12 3.5l1.8 4.2L18 9.5l-4.2 1.8L12 15.5l-1.8-4.2L6 9.5l4.2-1.8z"></path>
-          <path d="M18.5 14.5l.8 1.9 1.9.8-1.9.8-.8 1.9-.8-1.9-1.9-.8 1.9-.8z"></path>
-          <path d="M6 15.5l1 2.2 2.2 1-2.2 1-1 2.3-1-2.3-2.2-1 2.2-1z"></path>
-        </svg>
-      `;
-    case 'task':
-      return `
-        <svg viewBox="0 0 24 24">
-          <path d="M9 6.5h10"></path>
-          <path d="M9 12h10"></path>
-          <path d="M9 17.5h10"></path>
-          <path d="M5.5 6.5h.01"></path>
-          <path d="M5.5 12h.01"></path>
-          <path d="M5.5 17.5h.01"></path>
-        </svg>
-      `;
-    case 'review':
-      return `
-        <svg viewBox="0 0 24 24">
-          <path d="M12 5.5v13"></path>
-          <path d="M5.5 12h13"></path>
-          <path d="M7.5 7.5l9 9"></path>
-          <path d="M16.5 7.5l-9 9"></path>
-        </svg>
-      `;
-    case 'settings':
-      return `
-        <svg viewBox="0 0 24 24">
-          <path d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z"></path>
-          <path d="M19 12a7 7 0 0 0-.1-1l2-1.5-2-3.4-2.4 1a7.3 7.3 0 0 0-1.7-1l-.4-2.6H9.6l-.4 2.6a7.3 7.3 0 0 0-1.7 1l-2.4-1-2 3.4 2 1.5a7 7 0 0 0 0 2l-2 1.5 2 3.4 2.4-1a7.3 7.3 0 0 0 1.7 1l.4 2.6h4.8l.4-2.6a7.3 7.3 0 0 0 1.7-1l2.4 1 2-3.4-2-1.5c.07-.33.1-.67.1-1z"></path>
-        </svg>
-      `;
-    default:
-      return `<span>${key}</span>`;
-  }
+  elements.moduleRail.innerHTML = renderModuleRail(railItems);
 }
 
 function renderAll() {
@@ -1651,27 +1518,7 @@ function renderSearchShell() {
   const selectedTags = getSelectedSearchTags();
 
   if (!elements.globalSearchShell.querySelector('.top-bar-search-control')) {
-    elements.globalSearchShell.innerHTML = `
-      <div class="top-bar-search-control" data-open="false">
-        <span class="top-bar-search-icon" aria-hidden="true">
-          <svg viewBox="0 0 24 24">
-            <circle cx="11" cy="11" r="6"></circle>
-            <path d="M16 16l4 4"></path>
-          </svg>
-        </span>
-        <div class="top-search-chip-track" data-search-chip-track></div>
-        <input
-          id="global-search"
-          data-search-input
-          type="text"
-          placeholder="搜索笔记、标签、附件、AI 结果"
-          autocomplete="off"
-          spellcheck="false"
-        />
-        <button type="button" class="top-search-clear" data-search-clear hidden>清空</button>
-      </div>
-      <div class="search-panel-host"></div>
-    `;
+    elements.globalSearchShell.innerHTML = renderSearchShellMarkup();
   }
 
   elements.globalSearchShell.dataset.open = String(state.search.isOpen);
@@ -1716,12 +1563,7 @@ function renderSearchPanel() {
 }
 
 function getEffectiveViewState() {
-  return {
-    mode: state.view.mode,
-    showLeftSidebar: state.view.mode === 'focus' ? false : state.view.showLeftSidebar,
-    showRightSidebar: state.view.mode === 'focus' ? false : state.view.showRightSidebar,
-    showSourceEditor: state.view.showSourceEditor
-  };
+  return selectEffectiveViewState(state.view);
 }
 
 function renderWorkspaceViewState() {
@@ -1823,40 +1665,19 @@ function renderTabs() {
     .filter(Boolean);
 
   if (openNotes.length === 0) {
-    elements.noteTabs.innerHTML = `
-      <div class="note-tabs-empty">
-        <span class="note-tabs-empty-label">No open notes</span>
-      </div>
-    `;
+    elements.noteTabs.innerHTML = renderEmptyNoteTabs();
     renderTabMenu();
     return;
   }
 
-  elements.noteTabs.innerHTML = openNotes
-    .map((note) => {
-      const isActive = note.id === state.selectedNoteId;
-      const isDirty = isActive && ['pending', 'saving', 'error'].includes(state.saveState);
-      const isDragging = state.tabDragState.activeId === note.id;
-      const isDropTarget = state.tabDragState.overId === note.id;
-      return `
-        <button
-          type="button"
-          class="note-tab"
-          data-tab-note-id="${note.id}"
-          data-active="${isActive}"
-          data-dirty="${isDirty}"
-          data-dragging="${isDragging}"
-          data-drop-target="${isDropTarget}"
-          title="${escapeAttribute(buildNoteTabPath(note, state.foldersById))}"
-          draggable="true"
-        >
-          <span class="note-tab-label">${escapeHtml(note.title)}</span>
-          <span class="note-tab-dirty">${isDirty ? '●' : ''}</span>
-          <span class="note-tab-close" data-tab-close="${note.id}" aria-label="Close tab" title="Close tab">×</span>
-        </button>
-      `;
-    })
-    .join('');
+  elements.noteTabs.innerHTML = renderNoteTabsMarkup({
+    notes: openNotes,
+    selectedNoteId: state.selectedNoteId,
+    saveState: state.saveState,
+    tabDragState: state.tabDragState,
+    foldersById: state.foldersById,
+    buildNoteTabPath
+  });
 
   renderTabMenu();
   syncTabDragIndicators();
@@ -1870,202 +1691,12 @@ function renderEditorMenuBar() {
 
   const note = getCurrentNote();
   const effectiveView = getEffectiveViewState();
-  const fileMenuOpen = state.editorMenuOpen === 'file';
-  const paragraphMenuOpen = state.editorMenuOpen === 'paragraph';
-  const editMenuOpen = state.editorMenuOpen === 'edit';
-  const formatMenuOpen = state.editorMenuOpen === 'format';
-  const viewMenuOpen = state.editorMenuOpen === 'view';
-
-  elements.editorMenuBar.innerHTML = `
-    <div class="editor-menu-shell">
-      <div class="editor-menu-group">
-        <button
-          type="button"
-          class="editor-menu-text"
-          data-editor-menu-toggle="file"
-          data-open="${fileMenuOpen}"
-        >
-          文件
-        </button>
-        ${fileMenuOpen ? renderFileMenu(note) : ''}
-      </div>
-      <div class="editor-menu-group">
-        <button
-          type="button"
-          class="editor-menu-text"
-          data-editor-menu-toggle="paragraph"
-          data-open="${paragraphMenuOpen}"
-        >
-          段落
-        </button>
-        ${paragraphMenuOpen ? renderParagraphMenu(note) : ''}
-      </div>
-      <div class="editor-menu-group">
-        <button
-          type="button"
-          class="editor-menu-text"
-          data-editor-menu-toggle="edit"
-          data-open="${editMenuOpen}"
-        >
-          编辑
-        </button>
-        ${editMenuOpen ? renderEditMenu(note) : ''}
-      </div>
-      <div class="editor-menu-group">
-        <button
-          type="button"
-          class="editor-menu-text"
-          data-editor-menu-toggle="format"
-          data-open="${formatMenuOpen}"
-        >
-          格式
-        </button>
-        ${formatMenuOpen ? renderFormatMenu(note) : ''}
-      </div>
-      <div class="editor-menu-group">
-        <button
-          type="button"
-          class="editor-menu-text"
-          data-editor-menu-toggle="view"
-          data-open="${viewMenuOpen}"
-        >
-          视图
-        </button>
-        ${viewMenuOpen ? renderViewMenu(note, effectiveView) : ''}
-      </div>
-    </div>
-  `;
-}
-
-function renderEditMenu(note) {
-  const hasNote = Boolean(note);
-
-  return `
-    <div class="editor-menu-popover" data-editor-menu="edit">
-      ${editMenuItems
-        .map((item) => {
-          if (item.key === 'separator') {
-            return '<div class="editor-menu-divider" aria-hidden="true"></div>';
-          }
-
-          return renderEditorMenuItem({
-            actionAttr: 'data-edit-menu-action',
-            actionKey: item.key,
-            disabled: !hasNote,
-            label: item.label
-          });
-        })
-        .join('')}
-    </div>
-  `;
-}
-
-
-function renderParagraphMenu(note) {
-  const hasNote = Boolean(note);
-
-  return `
-    <div class="editor-menu-popover" data-editor-menu="paragraph">
-      ${paragraphMenuItems
-        .map((item) => {
-          if (item.key === 'separator') {
-            return '<div class="editor-menu-divider" aria-hidden="true"></div>';
-          }
-
-          return renderEditorMenuItem({
-            actionAttr: 'data-paragraph-menu-action',
-            actionKey: item.key,
-            disabled: !hasNote,
-            label: item.label
-          });
-        })
-        .join('')}
-    </div>
-  `;
-}
-
-function renderFormatMenu(note) {
-  const hasNote = Boolean(note);
-
-  return `
-    <div class="editor-menu-popover" data-editor-menu="format">
-      ${formatButtons
-        .map((item) => {
-          if (item.key === 'separator') {
-            return '<div class="editor-menu-divider" aria-hidden="true"></div>';
-          }
-
-          return renderEditorMenuItem({
-            actionAttr: 'data-format-menu-action',
-            actionKey: item.key,
-            disabled: !hasNote,
-            label: item.label
-          });
-        })
-        .join('')}
-    </div>
-  `;
-}
-
-function renderEditorMenuItem({
-  actionAttr,
-  actionKey,
-  disabled = false,
-  label
-}) {
-  const shortcut = getEditorShortcutLabel(actionKey);
-  return `
-    <button type="button" class="editor-menu-item" ${actionAttr}="${actionKey}" ${disabled ? 'disabled' : ''}>
-      <span class="editor-menu-item-label">${escapeHtml(label)}</span>
-      ${shortcut ? `<span class="editor-menu-shortcut">${escapeHtml(shortcut)}</span>` : ''}
-    </button>
-  `;
-}
-
-function renderViewMenu(note, effectiveView) {
-  const hasNote = Boolean(note);
-  const hasEditableNote = Boolean(note && !note.deleted);
-
-  return `
-    <div class="editor-menu-popover" data-editor-menu="view">
-      <button type="button" class="editor-menu-item" data-view-menu-action="mode-read" data-active="${effectiveView.mode === 'read'}">阅读模式</button>
-      <button type="button" class="editor-menu-item" data-view-menu-action="mode-edit" data-active="${effectiveView.mode === 'edit'}">编辑模式</button>
-      <button type="button" class="editor-menu-item" data-view-menu-action="mode-focus" data-active="${effectiveView.mode === 'focus'}">专注模式</button>
-      <div class="editor-menu-divider" aria-hidden="true"></div>
-      <button type="button" class="editor-menu-item" data-view-menu-action="toggle-left-sidebar" data-active="${effectiveView.showLeftSidebar}">${effectiveView.showLeftSidebar ? '隐藏左侧目录区' : '显示左侧目录区'}</button>
-      <button type="button" class="editor-menu-item" data-view-menu-action="toggle-right-sidebar" data-active="${effectiveView.showRightSidebar}">${effectiveView.showRightSidebar ? '隐藏右侧辅助区' : '显示右侧辅助区'}</button>
-      <button type="button" class="editor-menu-item" data-view-menu-action="toggle-source-editor" data-active="${effectiveView.showSourceEditor}" ${hasEditableNote ? '' : 'disabled'}>${effectiveView.showSourceEditor ? '隐藏源码编辑器' : '显示源码编辑器'}</button>
-    </div>
-  `;
-}
-
-function renderFileMenu(note) {
-  const hasNote = Boolean(note);
-  const hasEditableNote = Boolean(note && !note.deleted);
-  const isDeletedNote = Boolean(note?.deleted);
-
-  return `
-    <div class="editor-menu-popover" data-editor-menu="file">
-      <button type="button" class="editor-menu-item" data-file-menu-action="new-note">新建笔记</button>
-      <button type="button" class="editor-menu-item" data-file-menu-action="new-folder">新建文件夹</button>
-      <button type="button" class="editor-menu-item" data-file-menu-action="import-markdown">导入 Markdown</button>
-      <div class="editor-menu-divider" aria-hidden="true"></div>
-      <button type="button" class="editor-menu-item" data-file-menu-action="save" ${hasEditableNote ? '' : 'disabled'}>保存</button>
-      <button type="button" class="editor-menu-item" data-file-menu-action="save-as" ${hasEditableNote ? '' : 'disabled'}>另存为</button>
-      <button type="button" class="editor-menu-item" data-file-menu-action="rename" ${hasEditableNote ? '' : 'disabled'}>重命名</button>
-      ${isDeletedNote
-        ? '<button type="button" class="editor-menu-item" data-file-menu-action="restore-note">恢复笔记</button>'
-        : hasEditableNote
-          ? `
-            <button type="button" class="editor-menu-item" data-file-menu-action="favorite-note">${note.favorite ? '取消收藏' : '收藏笔记'}</button>
-            <button type="button" class="editor-menu-item" data-file-menu-action="delete-note">删除</button>
-          `
-          : ''}
-      <div class="editor-menu-divider" aria-hidden="true"></div>
-      <button type="button" class="editor-menu-item" data-file-menu-action="export-markdown" ${hasEditableNote ? '' : 'disabled'}>导出 Markdown</button>
-      <button type="button" class="editor-menu-item" data-file-menu-action="export-pdf" ${hasEditableNote ? '' : 'disabled'}>导出</button>
-    </div>
-  `;
+  elements.editorMenuBar.innerHTML = renderEditorMenuBarMarkup({
+    note,
+    effectiveView,
+    openMenu: state.editorMenuOpen,
+    getShortcutLabel: getEditorShortcutLabel
+  });
 }
 
 function renderTabMenu() {
@@ -2082,12 +1713,7 @@ function renderTabMenu() {
   elements.noteTabMenu.hidden = false;
   elements.noteTabMenu.style.left = `${state.tabMenu.x}px`;
   elements.noteTabMenu.style.top = `${state.tabMenu.y}px`;
-  elements.noteTabMenu.innerHTML = `
-    <button type="button" class="note-tab-menu-item" data-tab-menu-action="close">关闭</button>
-    <button type="button" class="note-tab-menu-item" data-tab-menu-action="close-others">关闭其他</button>
-    <div class="note-tab-menu-divider" aria-hidden="true"></div>
-    <button type="button" class="note-tab-menu-item" data-tab-menu-action="copy-path">复制路径</button>
-  `;
+  elements.noteTabMenu.innerHTML = renderNoteTabMenuItems();
 }
 
 function renderNavSection({ key, label, count, children }) {
@@ -2296,47 +1922,15 @@ function renderSectionMenu() {
 function renderPreviewPane(markdown) {
   const headings = extractMarkdownHeadings(markdown);
   const previewHtml = renderMarkdownPreview(markdown);
-
-  return `
-    <section class="preview-pane preview-frame">
-      <div class="pane-body">
-        ${headings.length ? `
-          <div class="toc-list" data-preview-toc>
-            ${headings.map((heading) => `<a class="toc-item" data-level="${heading.level}" href="#${escapeAttribute(heading.id)}">${escapeHtml(heading.title)}</a>`).join('')}
-          </div>
-        ` : ''}
-        <article class="preview-rendered" data-preview-content>${previewHtml}</article>
-      </div>
-    </section>
-  `;
+  return renderPreviewPaneMarkup({ headings, previewHtml });
 }
 
 function renderSourceEditorPane() {
-  return `
-    <section class="editor-pane">
-      <div class="pane-body pane-body-editor">
-        <div class="source-toolbar">
-          <span class="editor-save-indicator" id="editor-save-indicator"></span>
-          <button type="button" class="subtle-button editor-save-button" data-source-save>保存源码</button>
-        </div>
-        <textarea class="markdown-input" data-source-editor-input spellcheck="false" aria-label="Markdown 源码编辑器">${escapeHtml(state.draftMarkdown)}</textarea>
-      </div>
-    </section>
-  `;
+  return renderSourceEditorPaneMarkup({ markdown: state.draftMarkdown });
 }
 
 function renderSourceEditorView() {
-  return `
-    <section class="editor-pane">
-      <div class="pane-body pane-body-editor">
-        <div class="source-toolbar">
-          <span class="editor-save-indicator" id="editor-save-indicator"></span>
-          <button type="button" class="subtle-button editor-save-button" data-source-save>保存源码</button>
-        </div>
-        <textarea class="markdown-input" data-source-editor-input spellcheck="false" aria-label="Markdown source editor">${escapeHtml(state.draftMarkdown)}</textarea>
-      </div>
-    </section>
-  `;
+  return renderSourceEditorViewMarkup({ markdown: state.draftMarkdown });
 }
 
 function renderEditor(note) {
@@ -2345,30 +1939,34 @@ function renderEditor(note) {
   }
 
   const effectiveView = getEffectiveViewState();
+  const renderState = resolveEditorRenderState({
+    note,
+    effectiveView,
+    currentEditorNoteId,
+    hasCurrentEditorHost: Boolean(currentEditorHost)
+  });
 
-  if (!note) {
+  if (renderState.shouldTeardownHost) {
     void teardownEditorHost();
+  }
+  if (renderState.shouldCloseTableDialog) {
     state.editorTableDialog.open = false;
-    elements.editorContent.dataset.sourceOpen = 'false';
-    elements.editorContent.dataset.viewMode = effectiveView.mode;
+  }
+
+  elements.editorContent.dataset.sourceOpen = String(renderState.sourceOpen);
+  elements.editorContent.dataset.viewMode = renderState.viewMode;
+
+  if (renderState.kind === 'empty') {
     elements.editorContent.innerHTML = renderPreviewPane('');
     return;
   }
 
-  if (note.deleted) {
-    void teardownEditorHost();
-    state.editorTableDialog.open = false;
-    elements.editorContent.dataset.sourceOpen = 'false';
-    elements.editorContent.dataset.viewMode = 'recycle';
+  if (renderState.kind === 'recycle') {
     elements.editorContent.innerHTML = renderPreviewPane(note.rawMarkdown || '');
     return;
   }
 
-  const shouldUseRichEditor = effectiveView.mode !== 'read' && !effectiveView.showSourceEditor;
-
-  if (shouldUseRichEditor && currentEditorHost && currentEditorNoteId === note.id) {
-    elements.editorContent.dataset.sourceOpen = 'false';
-    elements.editorContent.dataset.viewMode = effectiveView.mode;
+  if (renderState.kind === 'reuse-rich-editor') {
     renderEditorSaveIndicator();
     renderEditorPanel();
     renderTableInsertDialog();
@@ -2376,29 +1974,16 @@ function renderEditor(note) {
   }
 
   const markdown = state.draftMarkdown || note.rawMarkdown || '';
-  elements.editorContent.dataset.sourceOpen = String(effectiveView.showSourceEditor);
-  elements.editorContent.dataset.viewMode = effectiveView.mode;
 
-  if (!shouldUseRichEditor) {
-    void teardownEditorHost();
-    state.editorTableDialog.open = false;
-    elements.editorContent.innerHTML = effectiveView.showSourceEditor
+  if (renderState.kind === 'source-preview' || renderState.kind === 'preview') {
+    elements.editorContent.innerHTML = renderState.kind === 'source-preview'
       ? `${renderSourceEditorView()}${renderPreviewPane(markdown)}`
       : renderPreviewPane(markdown);
     renderEditorSaveIndicator();
     return;
   }
 
-  elements.editorContent.dataset.sourceOpen = 'false';
-  elements.editorContent.innerHTML = `
-    <section class="editor-pane editor-pane-single">
-      <div class="pane-body">
-        <div class="editor-utility-panel" id="editor-utility-panel" hidden></div>
-        <div class="editor-table-dialog" id="editor-table-dialog" hidden></div>
-        <div class="milkdown-host" id="milkdown-editor"></div>
-      </div>
-    </section>
-  `;
+  elements.editorContent.innerHTML = renderRichEditorHost();
 
   renderEditorSaveIndicator();
   renderEditorPanel();
@@ -2457,25 +2042,22 @@ function renderSidebar(note) {
     return;
   }
 
-  elements.asideTabs.innerHTML = ASIDE_TABS
-    .map(
-      (tab) => `
-        <button
-          type="button"
-          class="aside-tab"
-          data-aside-tab="${tab.key}"
-          data-active="${String(state.asideTab === tab.key)}"
-        >${escapeHtml(tab.label)}</button>
-      `
-    )
-    .join('');
+  elements.asideTabs.innerHTML = renderAsideTabs({
+    tabs: ASIDE_TABS,
+    activeKey: state.asideTab
+  });
 
-  if (!note) {
+  const contentKey = resolveAsideContentKey({
+    note,
+    activeTab: state.asideTab
+  });
+
+  if (contentKey === 'empty') {
     elements.asideContent.innerHTML = renderAsideEmptyState();
     return;
   }
 
-  switch (state.asideTab) {
+  switch (contentKey) {
     case 'outline':
       elements.asideContent.innerHTML = renderOutlineTab(note);
       return;
@@ -2495,7 +2077,10 @@ function renderInfoTab(note) {
   return renderInfoTabMarkup({
     note,
     markdown: state.draftMarkdown || note.rawMarkdown || '',
-    folderPath: buildFolderPath(note.folderId),
+    folderPath: buildFolderPath({
+      folderId: note.folderId,
+      foldersById: state.foldersById
+    }),
     tags: state.tags,
     tagComposer: state.noteTagComposer,
     linkedNotes: state.linkedNotes,
@@ -2534,190 +2119,11 @@ function renderEditorContextMenu() {
   }
 
   elements.editorContextMenu.hidden = false;
-  elements.editorContextMenu.innerHTML = `
-    <div class="editor-context-panel">
-      <div class="editor-context-action-row editor-context-action-row-primary">
-        ${editorContextPrimaryActions.map((action) => renderEditorContextIconButton(action)).join('')}
-      </div>
-      <div class="editor-context-action-row">
-        ${editorContextFormatActions.map((action) => renderEditorContextIconButton(action)).join('')}
-      </div>
-      <div class="editor-context-action-row editor-context-action-row-compact">
-        ${editorContextListActions.map((action) => renderEditorContextIconButton(action)).join('')}
-      </div>
-      <div class="editor-context-action-row editor-context-action-row-compact">
-        ${editorContextIndentActions.map((action) => renderEditorContextIconButton(action)).join('')}
-      </div>
-      <div class="editor-context-divider" aria-hidden="true"></div>
-      <div class="editor-context-submenu-group">
-        <button type="button" class="editor-context-submenu-trigger">
-          <span>标题</span>
-          <span class="editor-context-submenu-caret">▶</span>
-        </button>
-        <div class="editor-context-submenu">
-          ${editorContextParagraphItems.map((action) => renderEditorContextMenuItem(action)).join('')}
-        </div>
-      </div>
-      <div class="editor-context-submenu-group">
-        <button type="button" class="editor-context-submenu-trigger">
-          <span>插入</span>
-          <span class="editor-context-submenu-caret">▶</span>
-        </button>
-        <div class="editor-context-submenu">
-          ${editorContextInsertItems.map((action) => renderEditorContextMenuItem(action)).join('')}
-        </div>
-      </div>
-    </div>
-  `;
+  elements.editorContextMenu.innerHTML = renderEditorContextMenuMarkup({
+    getShortcutLabel: getEditorShortcutLabel
+  });
   syncEditorContextMenuPosition();
   syncEditorContextSubmenuLayout();
-}
-
-function renderEditorContextIconButton(action) {
-  const meta = editorContextActionMeta[action];
-  if (!meta) {
-    return '';
-  }
-
-  return `
-    <button
-      type="button"
-      class="editor-context-icon-button"
-      data-editor-context-action="${action}"
-      title="${escapeAttribute(meta.label)}"
-      aria-label="${escapeAttribute(meta.label)}"
-    >
-      ${renderEditorContextIconSvg(meta.icon)}
-    </button>
-  `;
-}
-
-function renderEditorContextMenuItem(action) {
-  const meta = editorContextActionMeta[action];
-  if (!meta) {
-    return '';
-  }
-
-  const shortcut = getEditorShortcutLabel(action);
-  return `
-    <button type="button" class="editor-context-menu-item" data-editor-context-action="${action}">
-      <span>${escapeHtml(meta.label)}</span>
-      ${shortcut ? `<span class="editor-context-shortcut">${escapeHtml(shortcut)}</span>` : ''}
-    </button>
-  `;
-}
-
-function renderEditorContextIcon(icon) {
-  return renderEditorContextIconSvg(icon);
-}
-
-
-function renderEditorContextIconSvg(icon) {
-  const strokeAttrs = 'fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"';
-  let content = '';
-  switch (icon) {
-    case 'cut':
-      content = `
-        <circle cx="8" cy="16" r="2.2" ${strokeAttrs}></circle>
-        <circle cx="16" cy="16" r="2.2" ${strokeAttrs}></circle>
-        <path d="M9.8 14.4 18 6.2" ${strokeAttrs}></path>
-        <path d="M14.2 14.4 6 6.2" ${strokeAttrs}></path>
-      `;
-      break;
-    case 'copy':
-      content = `
-        <rect x="8" y="7" width="9" height="11" rx="2.2" ${strokeAttrs}></rect>
-        <path d="M6.5 15.5H6A2 2 0 0 1 4 13.5V6a2 2 0 0 1 2-2h7.5" ${strokeAttrs}></path>
-      `;
-      break;
-    case 'paste':
-      content = `
-        <rect x="6.5" y="6.5" width="11" height="13" rx="2.2" ${strokeAttrs}></rect>
-        <path d="M9 6V4.8A1.8 1.8 0 0 1 10.8 3h2.4A1.8 1.8 0 0 1 15 4.8V6" ${strokeAttrs}></path>
-        <path d="M9 10h6M9 13h6M9 16h4.5" ${strokeAttrs}></path>
-      `;
-      break;
-    case 'delete':
-      content = `
-        <path d="M6.5 7.5h11" ${strokeAttrs}></path>
-        <path d="M8.2 7.5V6A2 2 0 0 1 10.2 4h3.6a2 2 0 0 1 2 2v1.5" ${strokeAttrs}></path>
-        <path d="M8.5 7.5 9 18a2 2 0 0 0 2 1.9h2a2 2 0 0 0 2-1.9l.5-10.5" ${strokeAttrs}></path>
-      `;
-      break;
-    case 'bold':
-      content = `
-        <path d="M8 5.5h4.5a3.2 3.2 0 1 1 0 6.4H8z" ${strokeAttrs}></path>
-        <path d="M8 11.9h5.3a3.4 3.4 0 1 1 0 6.8H8z" ${strokeAttrs}></path>
-      `;
-      break;
-    case 'italic':
-      content = `
-        <path d="M13.8 5.5h-4.4M14.6 18.5h-4.4M12.3 5.5 9.7 18.5" ${strokeAttrs}></path>
-      `;
-      break;
-    case 'highlight':
-      content = `
-        <path d="M5 17.5h6M9 16.2 16 9.2l2.8 2.8-7 7z" ${strokeAttrs}></path>
-        <path d="M13.5 6.5 16.5 9l1.5-1.5a1.6 1.6 0 0 0 0-2.3l-1.2-1.2a1.6 1.6 0 0 0-2.3 0z" ${strokeAttrs}></path>
-      `;
-      break;
-    case 'codeblock':
-      content = `
-        <path d="M9.2 8.2 5.5 12l3.7 3.8M14.8 8.2 18.5 12l-3.7 3.8M12.9 7 11.1 17" ${strokeAttrs}></path>
-      `;
-      break;
-    case 'quote':
-      content = `
-        <path d="M7.8 10.2h3.4v3.1a3.2 3.2 0 0 1-3.2 3.2H7v-2.1h.6a1.1 1.1 0 0 0 1.1-1.1v-.8H7.8z" ${strokeAttrs}></path>
-        <path d="M13.5 10.2h3.4v3.1a3.2 3.2 0 0 1-3.2 3.2h-1v-2.1h.6a1.1 1.1 0 0 0 1.1-1.1v-.8h-.9z" ${strokeAttrs}></path>
-      `;
-      break;
-    case 'table':
-      content = `
-        <rect x="4.5" y="5.5" width="15" height="13" rx="1.8" ${strokeAttrs}></rect>
-        <path d="M9.5 5.8v12.4M14.5 5.8v12.4M4.8 10h14.4M4.8 14h14.4" ${strokeAttrs}></path>
-      `;
-      break;
-    case 'ordered':
-      content = `
-        <path d="M9.5 7.5h8M9.5 12h8M9.5 16.5h8M5.8 8.2V6.4l-1 .7M4.8 12.2c.3-.7.8-1.1 1.5-1.1.8 0 1.5.6 1.5 1.4 0 .7-.4 1.1-1 1.5l-1.8 1.2h2.9" ${strokeAttrs}></path>
-      `;
-      break;
-    case 'bullet':
-      content = `
-        <circle cx="6.2" cy="7.8" r="1.1" fill="currentColor"></circle>
-        <circle cx="6.2" cy="12" r="1.1" fill="currentColor"></circle>
-        <circle cx="6.2" cy="16.2" r="1.1" fill="currentColor"></circle>
-        <path d="M9.5 7.8h8M9.5 12h8M9.5 16.2h8" ${strokeAttrs}></path>
-      `;
-      break;
-    case 'task-list':
-      content = `
-        <path d="M5.3 8.1 6.8 9.6l2.4-2.8M10.5 8h7M5.3 12.3 6.8 13.8l2.4-2.8M10.5 12.2h7M5.3 16.5 6.8 18l2.4-2.8M10.5 16.4h7" ${strokeAttrs}></path>
-      `;
-      break;
-    case 'outdent':
-      content = `
-        <path d="M10.5 7.8h7M10.5 12h7M10.5 16.2h7M4.8 12h4.4M7 9.8 4.8 12 7 14.2" ${strokeAttrs}></path>
-      `;
-      break;
-    case 'indent':
-      content = `
-        <path d="M6.5 7.8h7M6.5 12h7M6.5 16.2h7M14.8 12h4.4M17 9.8l2.2 2.2-2.2 2.2" ${strokeAttrs}></path>
-      `;
-      break;
-    default:
-      content = `<text x="12" y="14" text-anchor="middle" font-size="9" font-weight="600" fill="currentColor">${escapeHtml(icon || '')}</text>`;
-      break;
-  }
-
-  return `
-    <span class="editor-context-glyph" aria-hidden="true">
-      <svg viewBox="0 0 24 24" focusable="false">
-        ${content}
-      </svg>
-    </span>
-  `;
 }
 
 function syncEditorContextSubmenuLayout() {
@@ -2809,7 +2215,7 @@ async function handleEditorContextMenuAction(action) {
     return;
   }
 
-  if (editorContextPrimaryActions.includes(action)) {
+  if (EDITOR_CONTEXT_PRIMARY_ACTIONS.includes(action)) {
     await handleEditMenuAction(action);
     return;
   }
@@ -2818,38 +2224,22 @@ async function handleEditorContextMenuAction(action) {
   await currentEditorHost.focus();
 }
 
-function buildFolderPath(folderId) {
-  if (!folderId) {
-    return '资料 / 未分类';
-  }
-
-  const segments = [];
-  let currentFolder = state.foldersById[folderId] ?? null;
-
-  while (currentFolder) {
-    segments.unshift(currentFolder.name);
-    currentFolder = currentFolder.parentId ? state.foldersById[currentFolder.parentId] ?? null : null;
-  }
-
-  return segments.length ? `资料 / ${segments.join(' / ')}` : '资料 / 未分类';
-}
-
 function renderStatus() {
   const visibleNotes = getVisibleNotes();
 
   if (elements.statusIndicators) {
-    elements.statusIndicators.innerHTML = `
-      <span class="status-inline">${escapeHtml(state.statusMessage)}</span>
-      <span class="status-inline">笔记 ${visibleNotes.length}</span>
-      <span class="status-inline">目录 ${Object.keys(state.foldersById).length}</span>
-    `;
+    elements.statusIndicators.innerHTML = renderStatusIndicators({
+      statusMessage: state.statusMessage,
+      visibleNoteCount: visibleNotes.length,
+      folderCount: Object.keys(state.foldersById).length
+    });
   }
 
   if (elements.statusMeta) {
-    elements.statusMeta.innerHTML = `
-      <span class="status-inline">UTF-8</span>
-      <span class="status-inline">${escapeHtml(state.dataMode === 'api' ? (state.currentSpaceId || '已连接后端') : '前端本地模式')}</span>
-    `;
+    elements.statusMeta.innerHTML = renderStatusMeta({
+      dataMode: state.dataMode,
+      currentSpaceId: state.currentSpaceId
+    });
   }
 }
 
@@ -3408,12 +2798,11 @@ async function createFolder(parentId, name) {
     return;
   }
 
-  const nextFolder = {
-    id: `folder-${Date.now().toString(36)}`,
+  const nextFolder = createLocalFolderInput({
     name,
     parentId,
     spaceId: state.currentSpaceId
-  };
+  });
   state.folderTree = insertLocalFolder(state.folderTree, nextFolder);
   if (parentId) {
     state.openFolders[parentId] = true;
@@ -3497,19 +2886,11 @@ async function createNote(folderId, title) {
     return;
   }
 
-  const nextNote = {
-    id: `note-${Date.now().toString(36)}`,
+  const nextNote = createLocalManualNoteInput({
     title,
-    rawMarkdown: `# ${title}\n\n`,
     folderId,
-    spaceId: state.currentSpaceId,
-    favorite: false,
-    status: 'draft',
-    sourceType: 'manual',
-    tagIds: [],
-    internalLinks: [],
-    updatedAt: new Date().toISOString()
-  };
+    spaceId: state.currentSpaceId
+  });
   state.allNotes = insertLocalNote(state.allNotes, nextNote);
   state.selectedNoteId = nextNote.id;
   state.selectedFolderId = folderId ?? null;
@@ -3528,11 +2909,7 @@ async function renameNote(noteId, title) {
     return;
   }
 
-  state.allNotes = renameLocalNoteEntry(state.allNotes, noteId, title).map((note) => (
-    note.id === noteId
-      ? { ...note, updatedAt: new Date().toISOString() }
-      : note
-  ));
+  state.allNotes = renameLocalNote(state.allNotes, noteId, title);
   syncLocalWorkspace();
 }
 
@@ -3548,11 +2925,7 @@ async function deleteNote(noteId) {
     return;
   }
 
-  state.allNotes = state.allNotes.map((note) => (
-    note.id === noteId
-      ? { ...note, deleted: true, updatedAt: new Date().toISOString() }
-      : note
-  ));
+  state.allNotes = softDeleteLocalNote(state.allNotes, noteId);
   if (state.selectedNoteId === noteId) {
     state.selectedNoteId = null;
   }
@@ -3571,7 +2944,7 @@ async function permanentlyDeleteNote(noteId) {
     return;
   }
 
-  state.allNotes = state.allNotes.filter((note) => note.id !== noteId);
+  state.allNotes = permanentlyDeleteLocalNote(state.allNotes, noteId);
   if (state.selectedNoteId === noteId) {
     state.selectedNoteId = null;
   }
@@ -3590,11 +2963,7 @@ async function restoreNote(noteId) {
     return;
   }
 
-  state.allNotes = state.allNotes.map((note) => (
-    note.id === noteId
-      ? { ...note, deleted: false, updatedAt: new Date().toISOString() }
-      : note
-  ));
+  state.allNotes = restoreLocalNote(state.allNotes, noteId);
   syncLocalWorkspace();
 }
 
@@ -3610,7 +2979,7 @@ async function emptyRecycleBin() {
     return;
   }
 
-  state.allNotes = state.allNotes.filter((note) => !note.deleted);
+  state.allNotes = emptyLocalRecycleBin(state.allNotes);
   if (state.selectedNoteId && !getNoteById(state.selectedNoteId)) {
     state.selectedNoteId = null;
   }
@@ -3626,11 +2995,7 @@ async function setNoteFavorite(noteId, favorite) {
     return;
   }
 
-  state.allNotes = state.allNotes.map((note) => (
-    note.id === noteId
-      ? { ...note, favorite: Boolean(favorite), updatedAt: new Date().toISOString() }
-      : note
-  ));
+  state.allNotes = setLocalNoteFavorite(state.allNotes, noteId, favorite);
   syncLocalWorkspace();
 }
 
@@ -3650,11 +3015,7 @@ async function moveNote(noteId, nextFolderId) {
     return;
   }
 
-  state.allNotes = moveLocalNoteEntry(state.allNotes, noteId, nextFolderId).map((note) => (
-    note.id === noteId
-      ? { ...note, updatedAt: new Date().toISOString() }
-      : note
-  ));
+  state.allNotes = moveLocalNoteToFolder(state.allNotes, noteId, nextFolderId);
   if (nextFolderId) {
     openFolderBranch(nextFolderId);
   }
@@ -3926,21 +3287,7 @@ async function handleFileMenuAction(action) {
 
 async function importMarkdownFiles(files) {
   const folderId = getMenuTargetFolderId();
-  const normalizedFiles = Array.from(files ?? []).filter(Boolean);
-
-  if (normalizedFiles.length === 0) {
-    throw new Error('请先选择 Markdown 文件');
-  }
-
-  const importedItems = await Promise.all(normalizedFiles.map(async (file, index) => {
-    const rawMarkdown = await file.text();
-    return {
-      id: `note-import-${Date.now().toString(36)}-${index.toString(36)}`,
-      title: deriveMarkdownImportTitle(file.name, rawMarkdown),
-      rawMarkdown,
-      sourceType: 'markdown-import'
-    };
-  }));
+  const importedItems = await buildMarkdownImportItems(files);
 
   if (state.dataMode === 'api') {
     const importedResponseItems = await knowledgeApi.importMarkdownNotes(importedItems.map((item) => ({
@@ -3971,27 +3318,15 @@ async function importMarkdownFiles(files) {
       renderAll();
     }
 
-    flashStatus(
-      importedItems.length > 1
-        ? `已导入 ${importedItems.length} 个 Markdown 文件`
-        : `已导入 Markdown 笔记：${firstImported?.title ?? importedItems[0].title}`
-    );
+    flashStatus(getMarkdownImportStatusMessage(importedItems, firstImported));
     return;
   }
 
-  state.allNotes = importedItems.reduce((notes, item) => insertLocalNote(notes, {
-    id: item.id,
-    title: item.title,
-    rawMarkdown: item.rawMarkdown,
+  state.allNotes = importedItems.reduce((notes, item) => insertLocalNote(notes, createLocalImportedNoteInput({
+    item,
     folderId,
-    spaceId: state.currentSpaceId,
-    favorite: false,
-    status: 'draft',
-    sourceType: item.sourceType,
-    tagIds: [],
-    internalLinks: [],
-    updatedAt: new Date().toISOString()
-  }), state.allNotes);
+    spaceId: state.currentSpaceId
+  })), state.allNotes);
   state.selectedNoteId = importedItems[0]?.id ?? state.selectedNoteId;
   state.selectedFolderId = folderId ?? null;
   state.openNoteTabs = importedItems.reduce(
@@ -4003,11 +3338,7 @@ async function importMarkdownFiles(files) {
   }
   syncLocalWorkspace();
 
-  flashStatus(
-    importedItems.length > 1
-      ? `已导入 ${importedItems.length} 个 Markdown 文件`
-      : `已导入 Markdown 笔记：${importedItems[0].title}`
-  );
+  flashStatus(getMarkdownImportStatusMessage(importedItems));
 }
 
 function getMenuTargetFolderId() {
@@ -4019,13 +3350,12 @@ function getMenuTargetFolderId() {
 }
 
 function getSiblingNames(folderId) {
-  const folderNames = (folderId ? state.foldersById[folderId]?.children ?? [] : state.folderTree)
-    .map((folder) => folder.name);
-  const noteNames = state.allNotes
-    .filter((note) => note.folderId === folderId)
-    .map((note) => note.title);
-
-  return [...folderNames, ...noteNames];
+  return getSiblingNamesForFolder({
+    folderId,
+    foldersById: state.foldersById,
+    folderTree: state.folderTree,
+    notes: state.allNotes
+  });
 }
 
 async function duplicateCurrentNote(note) {
@@ -4056,13 +3386,11 @@ async function duplicateCurrentNote(note) {
     return;
   }
 
-  const nextNote = {
-    ...refreshedNote,
-    id: `note-${Date.now().toString(36)}`,
+  const nextNote = createLocalDuplicateNoteInput({
+    note: refreshedNote,
     title: nextTitle,
-    rawMarkdown: state.draftMarkdown || refreshedNote.rawMarkdown,
-    updatedAt: new Date().toISOString()
-  };
+    markdown: state.draftMarkdown || refreshedNote.rawMarkdown
+  });
 
   state.allNotes = insertLocalNote(state.allNotes, nextNote);
   state.selectedNoteId = nextNote.id;
@@ -4089,34 +3417,12 @@ function exportCurrentNoteAsPdf(note) {
   const editorBody = document.querySelector('#milkdown-editor .ProseMirror');
   const previewHtml = editorBody?.innerHTML ?? `<pre>${escapeHtml(state.draftMarkdown || note.rawMarkdown)}</pre>`;
   const previewFileName = buildExportFileName(note.title, 'pdf');
-  const printableHtml = `
-    <!doctype html>
-    <html lang="zh-CN">
-      <head>
-        <meta charset="utf-8" />
-        <title>${escapeHtml(previewFileName)}</title>
-        <style>
-          body { font-family: "Segoe UI", "PingFang SC", sans-serif; margin: 40px auto; max-width: 760px; color: #142033; line-height: 1.8; }
-          h1, h2, h3 { line-height: 1.3; }
-          pre { padding: 16px; background: #10182b; color: #eff4ff; overflow: auto; }
-          code { font-family: Consolas, monospace; }
-          blockquote { border-left: 3px solid #4c72ff; padding-left: 14px; color: #51607a; }
-          img { max-width: 100%; }
-        </style>
-      </head>
-      <body>
-        <article>${previewHtml}</article>
-        <script>
-          window.addEventListener('load', function () {
-            window.setTimeout(function () {
-              window.focus();
-              window.print();
-            }, 120);
-          });
-        </script>
-      </body>
-    </html>
-  `;
+  const printableHtml = buildNoteExportHtml({
+    title: previewFileName,
+    previewHtml,
+    print: true,
+    delayedPrint: true
+  });
   const exportBlob = new Blob([printableHtml], { type: 'text/html;charset=utf-8' });
   const exportUrl = URL.createObjectURL(exportBlob);
   const exportWindow = window.open(exportUrl, '_blank');
@@ -4127,31 +3433,11 @@ function exportCurrentNoteAsPdf(note) {
   }
 
   const fileName = buildExportFileName(note.title, 'pdf');
-  exportWindow.document.write(`
-    <!doctype html>
-    <html lang="zh-CN">
-      <head>
-        <meta charset="utf-8" />
-        <title>${escapeHtml(fileName)}</title>
-        <style>
-          body { font-family: "Segoe UI", "PingFang SC", sans-serif; margin: 40px auto; max-width: 760px; color: #142033; line-height: 1.8; }
-          h1, h2, h3 { line-height: 1.3; }
-          pre { padding: 16px; background: #10182b; color: #eff4ff; overflow: auto; }
-          code { font-family: Consolas, monospace; }
-          blockquote { border-left: 3px solid #4c72ff; padding-left: 14px; color: #51607a; }
-          img { max-width: 100%; }
-        </style>
-      </head>
-      <body>
-        <article>${previewHtml}</article>
-        <script>
-          window.addEventListener('load', function () {
-            window.print();
-          });
-        </script>
-      </body>
-    </html>
-  `);
+  exportWindow.document.write(buildNoteExportHtml({
+    title: fileName,
+    previewHtml,
+    print: true
+  }));
   exportWindow.document.close();
   flashStatus(`已准备导出：${fileName}`);
 }
@@ -4164,32 +3450,11 @@ function exportCurrentNoteAsPdfStable(note) {
   const editorBody = document.querySelector('#milkdown-editor .ProseMirror');
   const previewHtml = editorBody?.innerHTML ?? `<pre>${escapeHtml(state.draftMarkdown || note.rawMarkdown)}</pre>`;
   const exportName = buildExportFileName(note.title, 'html');
-  const styledHtml = `
-    <!doctype html>
-    <html lang="zh-CN">
-      <head>
-        <meta charset="utf-8" />
-        <title>${escapeHtml(exportName)}</title>
-        <style>
-          body { font-family: "Segoe UI", "PingFang SC", sans-serif; margin: 40px auto; max-width: 760px; color: #142033; line-height: 1.8; }
-          h1, h2, h3 { line-height: 1.3; }
-          pre { padding: 16px; background: #10182b; color: #eff4ff; overflow: auto; border-radius: 12px; }
-          code { font-family: Consolas, monospace; }
-          blockquote { border-left: 3px solid #4c72ff; padding-left: 14px; color: #51607a; }
-          img { max-width: 100%; }
-          table { width: 100%; border-collapse: collapse; }
-          th, td { padding: 8px 10px; border: 1px solid #d0d7e2; text-align: left; }
-          th { background: #f0f4fa; }
-          li[data-item-type="task"] { list-style: none; position: relative; padding-left: 1.6em; }
-          li[data-item-type="task"]::before { content: '☐'; position: absolute; left: 0; font-size: 1.1em; }
-          li[data-item-type="task"][data-checked="true"]::before { content: '☑'; }
-        </style>
-      </head>
-      <body>
-        <article>${previewHtml}</article>
-      </body>
-    </html>
-  `;
+  const styledHtml = buildNoteExportHtml({
+    title: exportName,
+    previewHtml,
+    rich: true
+  });
   triggerFileDownload(exportName, styledHtml, 'text/html;charset=utf-8');
   flashStatus(`已导出：${exportName}`);
 }
@@ -4207,53 +3472,13 @@ function triggerFileDownload(fileName, content, mimeType) {
 }
 
 function validateTreeEditorName(editor, candidateName) {
-  if (editor.mode === 'create-folder' || editor.mode === 'create-note') {
-    const parentId = editor.parentId ?? null;
-    const siblingFolders = parentId
-      ? state.foldersById[parentId]?.children ?? []
-      : state.folderTree;
-    const siblingNotes = state.allNotes.filter((note) => note.folderId === parentId);
-
-    validateSiblingName({
-      candidateName,
-      siblingFolders,
-      siblingNotes
-    });
-    return;
-  }
-
-  if (editor.mode === 'rename-folder') {
-    const folder = state.foldersById[editor.targetId];
-    const parentId = folder?.parentId ?? null;
-    const siblingFolders = parentId
-      ? state.foldersById[parentId]?.children ?? []
-      : state.folderTree;
-    const siblingNotes = state.allNotes.filter((note) => note.folderId === parentId);
-
-    validateSiblingName({
-      candidateName,
-      siblingFolders,
-      siblingNotes,
-      currentFolderId: editor.targetId
-    });
-    return;
-  }
-
-  if (editor.mode === 'rename-note') {
-    const note = state.allNotes.find((item) => item.id === editor.targetId);
-    const folderId = note?.folderId ?? null;
-    const siblingFolders = folderId
-      ? state.foldersById[folderId]?.children ?? []
-      : state.folderTree;
-    const siblingNotes = state.allNotes.filter((item) => item.folderId === folderId);
-
-    validateSiblingName({
-      candidateName,
-      siblingFolders,
-      siblingNotes,
-      currentNoteId: editor.targetId
-    });
-  }
+  validateNavigationTreeEditorName({
+    editor,
+    candidateName,
+    foldersById: state.foldersById,
+    folderTree: state.folderTree,
+    notes: state.allNotes
+  });
 }
 
 async function handleTabClose(noteId) {
@@ -4450,43 +3675,6 @@ function handleEditorMarkdownChange(markdown) {
   scheduleAutosave();
 }
 
-function deriveNoteTitleFromMarkdown(markdown, fallbackTitle = 'Untitled Note') {
-  const headingMatch = String(markdown ?? '').match(/^\s*#\s+(.+)$/m);
-  if (headingMatch?.[1]?.trim()) {
-    return headingMatch[1].trim();
-  }
-
-  const firstLine = String(markdown ?? '')
-    .split('\n')
-    .map((line) => line.trim())
-    .find(Boolean);
-
-  return firstLine || fallbackTitle;
-}
-
-function deriveMarkdownImportTitle(fileName, markdown) {
-  const fallbackTitle = String(fileName ?? '')
-    .replace(/\.[^.]+$/, '')
-    .trim() || 'Imported Note';
-
-  return deriveNoteTitleFromMarkdown(markdown, fallbackTitle);
-}
-
-function getSaveStateLabel() {
-  switch (state.saveState) {
-    case 'pending':
-      return '待保存';
-    case 'saving':
-      return '保存中...';
-    case 'saved':
-      return state.lastSavedAt ? `已保存 ${formatDate(state.lastSavedAt)}` : '已保存';
-    case 'error':
-      return '保存失败';
-    default:
-      return '实时编辑';
-  }
-}
-
 function renderEditorSaveIndicator() {
   const indicator = document.getElementById('editor-save-indicator');
   if (!indicator) {
@@ -4494,7 +3682,11 @@ function renderEditorSaveIndicator() {
   }
 
   indicator.dataset.saveState = state.saveState;
-  indicator.textContent = getSaveStateLabel();
+  indicator.textContent = getSaveStateLabel({
+    saveState: state.saveState,
+    lastSavedAt: state.lastSavedAt,
+    formatDate
+  });
 }
 
 function renderEditorPanel() {
@@ -4510,59 +3702,9 @@ function renderEditorPanel() {
     return;
   }
 
-  const isReplace = state.editorPanel.mode === 'replace';
-  const queryValue = escapeHtml(state.editorPanel.query ?? '');
-  const replacementValue = escapeHtml(state.editorPanel.replacement ?? '');
-  const statusText = state.editorPanel.query
-    ? (state.editorPanel.matchCount > 0
-      ? `已找到 ${state.editorPanel.matchCount} 处`
-      : '未找到匹配项')
-    : '输入内容后开始查找';
-
   panel.hidden = false;
   panel.dataset.mode = state.editorPanel.mode;
-  panel.innerHTML = `
-    <div class="editor-utility-panel-head">
-      <div class="editor-utility-panel-title">${isReplace ? '替换' : '查找'}</div>
-      <button type="button" class="editor-utility-close" data-editor-panel-action="close" aria-label="关闭查找面板">×</button>
-    </div>
-    <div class="editor-utility-panel-body">
-      <label class="editor-utility-field">
-        <span>查找内容</span>
-        <input
-          type="text"
-          class="editor-utility-input"
-          data-panel-field="query"
-          value="${queryValue}"
-          placeholder="输入要查找的文字"
-          autocomplete="off"
-          spellcheck="false"
-        />
-      </label>
-      ${isReplace ? `
-        <label class="editor-utility-field">
-          <span>替换为</span>
-          <input
-            type="text"
-            class="editor-utility-input"
-            data-panel-field="replacement"
-            value="${replacementValue}"
-            placeholder="输入替换后的文字"
-            autocomplete="off"
-            spellcheck="false"
-          />
-        </label>
-      ` : ''}
-      <div class="editor-utility-panel-status">${escapeHtml(statusText)}</div>
-      ${!isReplace ? '<div class="editor-utility-panel-hint">F3 下一个，Shift+F3 上一个</div>' : ''}
-    </div>
-    <div class="editor-utility-panel-actions">
-      ${!isReplace ? '<button type="button" class="ghost-button" data-editor-panel-action="submit-previous">查找上一个</button>' : ''}
-      <button type="button" class="subtle-button" data-editor-panel-action="submit">${isReplace ? '替换一次' : '查找下一个'}</button>
-      ${isReplace ? '<button type="button" class="subtle-button" data-editor-panel-action="replace-all">全部替换</button>' : ''}
-      <button type="button" class="ghost-button" data-editor-panel-action="close">关闭</button>
-    </div>
-  `;
+  panel.innerHTML = renderEditorPanelMarkup(state.editorPanel);
 
   if (state.editorPanel.autoFocusInput) {
     window.requestAnimationFrame(() => {
@@ -4572,15 +3714,6 @@ function renderEditorPanel() {
       state.editorPanel.autoFocusInput = false;
     });
   }
-}
-
-function normalizeTableDialogValue(value, fallback) {
-  const parsed = Number.parseInt(String(value ?? '').trim(), 10);
-  if (!Number.isFinite(parsed)) {
-    return fallback;
-  }
-
-  return Math.min(20, Math.max(1, parsed));
 }
 
 function openTableInsertDialog({ rows = '4', cols = '3' } = {}) {
@@ -4633,44 +3766,7 @@ function renderTableInsertDialog() {
   }
 
   dialog.hidden = false;
-  dialog.innerHTML = `
-    <div class="editor-table-dialog-backdrop" data-editor-table-dialog-action="cancel"></div>
-    <div class="editor-table-dialog-card" role="dialog" aria-modal="true" aria-labelledby="editor-table-dialog-title">
-      <div class="editor-table-dialog-title" id="editor-table-dialog-title">插入表格</div>
-      <div class="editor-table-dialog-grid">
-        <label class="editor-table-dialog-field">
-          <span>行</span>
-          <input
-            type="number"
-            min="1"
-            max="20"
-            step="1"
-            inputmode="numeric"
-            class="editor-table-dialog-input"
-            data-table-dialog-field="rows"
-            value="${escapeAttribute(state.editorTableDialog.rows)}"
-          />
-        </label>
-        <label class="editor-table-dialog-field">
-          <span>列</span>
-          <input
-            type="number"
-            min="1"
-            max="20"
-            step="1"
-            inputmode="numeric"
-            class="editor-table-dialog-input"
-            data-table-dialog-field="cols"
-            value="${escapeAttribute(state.editorTableDialog.cols)}"
-          />
-        </label>
-      </div>
-      <div class="editor-table-dialog-actions">
-        <button type="button" class="ghost-button" data-editor-table-dialog-action="cancel">取消</button>
-        <button type="button" class="subtle-button" data-editor-table-dialog-action="confirm">确定</button>
-      </div>
-    </div>
-  `;
+  dialog.innerHTML = renderTableInsertDialogMarkup(state.editorTableDialog);
 
   if (state.editorTableDialog.autoFocusInput) {
     window.requestAnimationFrame(() => {
@@ -4712,9 +3808,12 @@ async function persistDraft({ immediate = false } = {}) {
     autosaveTimer = null;
   }
 
-  const nextMarkdown = state.draftMarkdown;
-  const nextTitle = deriveNoteTitleFromMarkdown(nextMarkdown, note.title);
-  if (note.rawMarkdown === nextMarkdown && note.title === nextTitle) {
+  const draftSave = resolveDraftSaveState({
+    note,
+    markdown: state.draftMarkdown,
+    deriveTitle: deriveNoteTitleFromMarkdown
+  });
+  if (!draftSave.changed) {
     state.saveState = 'saved';
     renderEditorSaveIndicator();
     renderStatus();
@@ -4730,28 +3829,21 @@ async function persistDraft({ immediate = false } = {}) {
 
     if (state.dataMode === 'api') {
       updatedNote = await knowledgeApi.updateNote(note.id, {
-        title: nextTitle,
-        rawMarkdown: nextMarkdown
+        title: draftSave.nextTitle,
+        rawMarkdown: draftSave.nextMarkdown
       });
     } else {
-      updatedNote = {
-        ...note,
-        title: nextTitle,
-        rawMarkdown: nextMarkdown,
-        updatedAt: new Date().toISOString()
-      };
+      updatedNote = createLocalDraftNote({
+        note,
+        title: draftSave.nextTitle,
+        markdown: draftSave.nextMarkdown
+      });
     }
 
-    state.allNotes = state.allNotes.map((item) => (
-      item.id === updatedNote.id
-        ? {
-            ...item,
-            ...updatedNote,
-            title: updatedNote.title ?? nextTitle,
-            rawMarkdown: updatedNote.rawMarkdown ?? nextMarkdown
-          }
-        : item
-    ));
+    state.allNotes = replaceNoteInCollection(state.allNotes, updatedNote, {
+      title: draftSave.nextTitle,
+      rawMarkdown: draftSave.nextMarkdown
+    });
     state.saveState = 'saved';
     state.lastSavedAt = updatedNote.updatedAt ?? new Date().toISOString();
 
@@ -4864,58 +3956,13 @@ function isCreateEditorForParent(parentId) {
   );
 }
 
-function normalizeFolderTree(nodes) {
-  if (!Array.isArray(nodes)) {
-    return [];
-  }
-
-  return nodes
-    .filter((node) => node && typeof node === 'object' && !Array.isArray(node))
-    .map((node) => ({
-      ...node,
-      id: String(node.id ?? ''),
-      name: String(node.name ?? '未命名目录'),
-      parentId: node.parentId ?? null,
-      children: normalizeFolderTree(node.children ?? [])
-    }))
-    .filter((node) => node.id);
-}
-
-function normalizeNotes(notes) {
-  if (!Array.isArray(notes)) {
-    return [];
-  }
-
-  return notes
-    .filter((note) => note && typeof note === 'object' && !Array.isArray(note))
-    .map((note) => ({
-      ...note,
-      id: String(note.id ?? ''),
-      title: String(note.title ?? '未命名笔记'),
-      folderId: note.folderId ?? null,
-      tagIds: Array.isArray(note.tagIds) ? [...note.tagIds] : [],
-      internalLinks: Array.isArray(note.internalLinks) ? [...note.internalLinks] : [],
-      rawMarkdown: note.rawMarkdown ?? '',
-      favorite: Boolean(note.favorite),
-      deleted: Boolean(note.deleted)
-    }))
-    .filter((note) => note.id);
-}
-
 function replaceNoteInState(updatedNote) {
-  const normalizedNote = normalizeNotes([updatedNote])[0];
-  if (!normalizedNote) {
+  const nextNotes = replaceNoteInCollection(state.allNotes, updatedNote);
+  if (nextNotes === state.allNotes) {
     return;
   }
 
-  state.allNotes = state.allNotes.map((note) => (
-    note.id === normalizedNote.id
-      ? {
-        ...note,
-        ...normalizedNote
-      }
-      : note
-  ));
+  state.allNotes = nextNotes;
 
   reconcileSelection();
   persistBackendCache();
@@ -4941,10 +3988,6 @@ function removeTagFromState(tagId) {
   state.allNotes = nextCollections.allNotes;
   state.search.selectedTagIds = nextCollections.selectedTagIds;
   persistBackendCache();
-}
-
-function buildTagId(name) {
-  return buildUniqueTagId(name, state.tags);
 }
 
 async function addTagToCurrentNote(tagId) {
@@ -5000,13 +4043,13 @@ async function removeTagFromCurrentNote(tagId) {
 }
 
 async function createTagAndAssignToCurrentNote(name) {
-  const normalizedName = String(name ?? '').trim();
+  const normalizedName = normalizeTagName(name);
   const currentNote = getCurrentNote();
   if (!currentNote || currentNote.deleted || !normalizedName) {
     return;
   }
 
-  const existingTag = state.tags.find((tag) => tag.name.trim().toLowerCase() === normalizedName.toLowerCase());
+  const existingTag = findTagByName(state.tags, normalizedName);
   if (existingTag) {
     state.noteTagComposer.draft = '';
     state.noteTagComposer.isExpanded = true;
@@ -5016,12 +4059,11 @@ async function createTagAndAssignToCurrentNote(name) {
   }
 
   try {
-    const tagInput = {
-      id: buildTagId(normalizedName),
-      spaceId: state.currentSpaceId,
+    const tagInput = buildTagInput({
       name: normalizedName,
-      color: '#3c68ff'
-    };
+      tags: state.tags,
+      spaceId: state.currentSpaceId
+    });
 
     let createdTag;
     if (state.dataMode === 'local') {
@@ -5146,30 +4188,6 @@ async function selectKnowledgePointSource(sourceId) {
   flashStatus(selected ? '已定位到正文片段' : '未能在正文中定位该片段');
 }
 
-function createLocalKnowledgePointAggregate(input) {
-  const createdAt = new Date().toISOString();
-  return {
-    id: input.id,
-    spaceId: input.spaceId,
-    title: input.title,
-    comment: input.comment ?? '',
-    status: 'active',
-    deletedAt: null,
-    createdAt,
-    updatedAt: createdAt,
-    sources: input.sources.map((source) => ({
-      ...source,
-      knowledgePointId: input.id,
-      sortOrder: source.sortOrder ?? 1,
-      isAnchorValid: true,
-      createdAt,
-      updatedAt: createdAt
-    })),
-    tagIds: input.tagIds ?? [],
-    noteIds: [input.noteId]
-  };
-}
-
 async function createKnowledgePointFromCurrentSelection(note) {
   if (!currentEditorHost) {
     flashStatus('编辑器尚未就绪');
@@ -5237,26 +4255,11 @@ async function attachSelectionToExistingKnowledgePoint(pointId) {
     let updated;
     if (state.dataMode === 'local' || state.dataMode === 'cache') {
       const point = state.allKnowledgePoints.find((item) => item.id === pointId);
-      if (!point) {
+      updated = addLocalKnowledgePointSource(point, sourceInput, note.id);
+      if (!updated) {
         flashStatus('未找到要加入的知识点');
         return;
       }
-      updated = {
-        ...point,
-        sources: [
-          ...(point.sources ?? []),
-          {
-            ...sourceInput,
-            knowledgePointId: point.id,
-            sortOrder: (point.sources ?? []).length + 1,
-            isAnchorValid: true,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString()
-          }
-        ],
-        noteIds: [...new Set([...(point.noteIds ?? []), note.id])],
-        updatedAt: new Date().toISOString()
-      };
     } else {
       updated = await knowledgeApi.addSourceToKnowledgePoint(pointId, sourceInput);
     }
@@ -5284,22 +4287,19 @@ async function removeKnowledgePointSourceFromCurrentNote(sourceId) {
       if (!point) {
         return;
       }
-      const source = (point.sources ?? []).find((item) => item.id === sourceId);
-      const nextSources = (point.sources ?? []).filter((item) => item.id !== sourceId);
-      if (nextSources.length === 0) {
+      const result = removeLocalKnowledgePointSource({
+        point,
+        sourceId,
+        currentNoteId: getCurrentNote()?.id
+      });
+      if (result.reason === 'last-source') {
         flashStatus('知识点至少需要保留一个原文片段');
         return;
       }
-      const currentNote = getCurrentNote();
-      const hasCurrentNoteSources = nextSources.some((item) => item.noteId === currentNote?.id);
-      updated = {
-        ...point,
-        sources: nextSources,
-        noteIds: hasCurrentNoteSources || source?.noteId !== currentNote?.id
-          ? point.noteIds
-          : (point.noteIds ?? []).filter((noteId) => noteId !== currentNote?.id),
-        updatedAt: new Date().toISOString()
-      };
+      if (!result.updatedPoint) {
+        return;
+      }
+      updated = result.updatedPoint;
     } else {
       updated = await knowledgeApi.deleteKnowledgePointSource(sourceId);
     }
@@ -5328,19 +4328,6 @@ async function deleteKnowledgePointFromLibrary(pointId) {
   } catch (error) {
     flashStatus(error.message || '删除知识点失败');
   }
-}
-
-function getKnowledgePointFormUpdates(form) {
-  const formData = new FormData(form);
-  const checkedTagIds = Array.from(form.querySelectorAll('[data-knowledge-point-edit-tag-input]:checked'))
-    .map((input) => input.value)
-    .filter(Boolean);
-  const hiddenTagIds = formData.getAll('tagIds').map((tagId) => String(tagId)).filter(Boolean);
-  return {
-    title: String(formData.get('title') ?? '').trim(),
-    comment: String(formData.get('comment') ?? '').trim(),
-    tagIds: [...new Set([...hiddenTagIds, ...checkedTagIds])]
-  };
 }
 
 async function updateCurrentKnowledgePoint(pointId, form) {

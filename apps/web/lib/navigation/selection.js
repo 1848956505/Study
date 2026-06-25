@@ -23,6 +23,22 @@ export function openFolderBranch({ openFolders = {}, foldersById = {}, folderId 
   return nextOpenFolders;
 }
 
+export function buildFolderPath({ folderId = null, foldersById = {}, rootLabel = '资料', emptyLabel = '未分类' } = {}) {
+  if (!folderId) {
+    return `${rootLabel} / ${emptyLabel}`;
+  }
+
+  const segments = [];
+  let currentFolder = foldersById[folderId] ?? null;
+
+  while (currentFolder) {
+    segments.unshift(currentFolder.name);
+    currentFolder = currentFolder.parentId ? foldersById[currentFolder.parentId] ?? null : null;
+  }
+
+  return segments.length ? `${rootLabel} / ${segments.join(' / ')}` : `${rootLabel} / ${emptyLabel}`;
+}
+
 export function resolveNavigationSelection({
   selectedFolderId = null,
   foldersById = {},

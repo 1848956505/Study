@@ -7,6 +7,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const componentsCss = fs.readFileSync(path.resolve(__dirname, '../styles/components.css'), 'utf8');
 const clientJs = fs.readFileSync(path.resolve(__dirname, '../src/client.js'), 'utf8');
+const viewStateJs = fs.readFileSync(path.resolve(__dirname, '../lib/shell/view-state.js'), 'utf8');
 
 assert.match(
   clientJs,
@@ -45,13 +46,13 @@ assert.match(
   'sidebar hidden state must beat the base flex layout so hidden panels truly disappear'
 );
 assert.match(
-  clientJs,
-  /state\.view\.mode === 'focus' \? false : state\.view\.showLeftSidebar/,
+  viewStateJs,
+  /view\.mode === 'focus' \? false : view\.showLeftSidebar/,
   'focus mode should force the left sidebar off through the effective view state'
 );
 assert.match(
-  clientJs,
-  /state\.view\.mode === 'focus' \? false : state\.view\.showRightSidebar/,
+  viewStateJs,
+  /view\.mode === 'focus' \? false : view\.showRightSidebar/,
   'focus mode should force the right sidebar off through the effective view state'
 );
 

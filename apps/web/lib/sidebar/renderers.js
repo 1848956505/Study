@@ -1,3 +1,18 @@
+export function renderAsideTabs({ tabs = [], activeKey = null } = {}) {
+  return tabs
+    .map(
+      (tab) => `
+        <button
+          type="button"
+          class="aside-tab"
+          data-aside-tab="${escapeAttribute(tab.key)}"
+          data-active="${String(activeKey === tab.key)}"
+        >${escapeHtml(tab.label)}</button>
+      `
+    )
+    .join('');
+}
+
 export function renderAsideEmptyState() {
   return `
     <section class="aside-panel-empty">

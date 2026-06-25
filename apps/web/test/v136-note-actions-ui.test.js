@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const clientJs = fs.readFileSync(path.resolve(__dirname, '../src/client.js'), 'utf8');
+const menuRenderersJs = fs.readFileSync(path.resolve(__dirname, '../lib/editor/menu-renderers.js'), 'utf8');
 const navigationTreeRenderersJs = fs.readFileSync(
   path.resolve(__dirname, '../lib/navigation/tree-renderers.js'),
   'utf8'
@@ -16,17 +17,17 @@ const navigationContextMenuJs = fs.readFileSync(
 );
 
 assert.match(
-  clientJs,
+  menuRenderersJs,
   /data-file-menu-action="favorite-note"/,
   'file menu should expose a favorite note action'
 );
 assert.match(
-  clientJs,
+  menuRenderersJs,
   /data-file-menu-action="delete-note"/,
   'file menu should expose a delete note action'
 );
 assert.match(
-  clientJs,
+  menuRenderersJs,
   /data-file-menu-action="restore-note"/,
   'file menu should expose a restore note action for deleted notes'
 );

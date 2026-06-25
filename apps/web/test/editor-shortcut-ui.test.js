@@ -6,21 +6,22 @@ import { fileURLToPath } from 'node:url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const clientJs = fs.readFileSync(path.resolve(__dirname, '../src/client.js'), 'utf8');
+const menuRenderersJs = fs.readFileSync(path.resolve(__dirname, '../lib/editor/menu-renderers.js'), 'utf8');
 const milkdownEntry = fs.readFileSync(path.resolve(__dirname, '../lib/editor/milkdown-entry.js'), 'utf8');
 const componentsCss = fs.readFileSync(path.resolve(__dirname, '../styles/components.css'), 'utf8');
 
 assert.match(
-  clientJs,
-  /const paragraphMenuItems = \[[\s\S]*label: '正文'[\s\S]*label: 'H1'[\s\S]*label: 'H2'[\s\S]*label: 'H3'[\s\S]*label: 'H4'[\s\S]*label: 'H5'[\s\S]*label: 'H6'/,
+  menuRenderersJs,
+  /const PARAGRAPH_MENU_ITEMS = \[[\s\S]*label: '正文'[\s\S]*label: 'H1'[\s\S]*label: 'H2'[\s\S]*label: 'H3'[\s\S]*label: 'H4'[\s\S]*label: 'H5'[\s\S]*label: 'H6'/,
   'paragraph menu should expose 正文+H1-H6 so the heading shortcuts have visible targets'
 );
 assert.match(
-  clientJs,
+  menuRenderersJs,
   /label: '内部链接'/,
   'format menu should render readable Chinese labels instead of mojibake'
 );
 assert.match(
-  clientJs,
+  menuRenderersJs,
   /editor-menu-shortcut/,
   'editor menus should render a dedicated shortcut label slot'
 );

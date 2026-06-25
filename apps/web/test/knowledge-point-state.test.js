@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
 import {
+  addLocalKnowledgePointSource,
   buildCurrentNoteKnowledgePointSources,
+  createLocalKnowledgePointAggregate,
   insertKnowledgePointCollections,
+  removeLocalKnowledgePointSource,
   removeKnowledgePointCollections,
   replaceKnowledgePointCollections,
   syncKnowledgePointMembershipCollections
@@ -89,4 +92,146 @@ runTest('buildCurrentNoteKnowledgePointSources returns sources for the current n
     { id: 'source-1', noteId: 'note-1', sourceText: 'A', knowledgePointId: 'point-1' },
     { id: 'source-3', noteId: 'note-1', sourceText: 'C', knowledgePointId: 'point-2' }
   ]);
+});
+
+runTest('addLocalKnowledgePointSource appends source metadata and note membership', () => {
+  const result = addLocalKnowledgePointSource({
+    id: 'point-1',
+    sources: [{ id: 'source-1', noteId: 'note-1' }],
+    noteIds: ['note-1']
+  }, {
+    id: 'source-2',
+    noteId: 'note-2',
+    sourceText: 'B'
+  }, 'note-2', '2026-06-25T00:00:00.000Z');
+
+  assert.deepEqual(result, {
+    id: 'point-1',
+    sources: [
+      { id: 'source-1', noteId: 'note-1' },
+      {
+        id: 'source-2',
+        noteId: 'note-2',
+        sourceText: 'B',
+        knowledgePointId: 'point-1',
+        sortOrder: 2,
+        isAnchorValid: true,
+        createdAt: '2026-06-25T00:00:00.000Z',
+        updatedAt: '2026-06-25T00:00:00.000Z'
+      }
+    ],
+    noteIds: ['note-1', 'note-2'],
+    updatedAt: '2026-06-25T00:00:00.000Z'
+  });
+});
+
+runTest('removeLocalKnowledgePointSource removes source and current note membership when needed', () => {
+  const result = removeLocalKnowledgePointSource({
+    point: {
+      id: 'point-1',
+      sources: [
+        { id: 'source-1', noteId: 'note-1' },
+        { id: 'source-2', noteId: 'note-2' }
+      ],
+      noteIds: ['note-1', 'note-2']
+    },
+    sourceId: 'source-1',
+    currentNoteId: 'note-1',
+    timestamp: '2026-06-25T00:00:00.000Z'
+  });
+
+  assert.equal(result.reason, null);
+  assert.deepEqual(result.updatedPoint, {
+    id: 'point-1',
+    sources: [{ id: 'source-2', noteId: 'note-2' }],
+    noteIds: ['note-2'],
+    updatedAt: '2026-06-25T00:00:00.000Z'
+  });
+});
+
+runTest('removeLocalKnowledgePointSource keeps current note membership when another source remains', () => {
+  const result = removeLocalKnowledgePointSource({
+    point: {
+      id: 'point-1',
+      sources: [
+        { id: 'source-1', noteId: 'note-1' },
+        { id: 'source-2', noteId: 'note-1' },
+        { id: 'source-3', noteId: 'note-2' }
+      ],
+      noteIds: ['note-1', 'note-2']
+    },
+    sourceId: 'source-1',
+    currentNoteId: 'note-1',
+    timestamp: '2026-06-25T00:00:00.000Z'
+  });
+
+  assert.equal(result.reason, null);
+  assert.deepEqual(result.updatedPoint.noteIds, ['note-1', 'note-2']);
+  assert.deepEqual(result.updatedPoint.sources, [
+    { id: 'source-2', noteId: 'note-1' },
+    { id: 'source-3', noteId: 'note-2' }
+  ]);
+});
+
+runTest('removeLocalKnowledgePointSource blocks removing the final source', () => {
+  const result = removeLocalKnowledgePointSource({
+    point: {
+      id: 'point-1',
+      sources: [{ id: 'source-1', noteId: 'note-1' }],
+      noteIds: ['note-1']
+    },
+    sourceId: 'source-1',
+    currentNoteId: 'note-1'
+  });
+
+  assert.equal(result.reason, 'last-source');
+  assert.equal(result.updatedPoint, null);
+});
+
+runTest('createLocalKnowledgePointAggregate builds an active point with normalized source metadata', () => {
+  const aggregate = createLocalKnowledgePointAggregate({
+    id: 'point-1',
+    spaceId: 'space-1',
+    title: 'Concept',
+    noteId: 'note-1',
+    sources: [
+      { id: 'source-1', noteId: 'note-1', sourceText: 'A' },
+      { id: 'source-2', noteId: 'note-1', sourceText: 'B', sortOrder: 3 }
+    ]
+  }, '2026-06-25T00:00:00.000Z');
+
+  assert.deepEqual(aggregate, {
+    id: 'point-1',
+    spaceId: 'space-1',
+    title: 'Concept',
+    comment: '',
+    status: 'active',
+    deletedAt: null,
+    createdAt: '2026-06-25T00:00:00.000Z',
+    updatedAt: '2026-06-25T00:00:00.000Z',
+    sources: [
+      {
+        id: 'source-1',
+        noteId: 'note-1',
+        sourceText: 'A',
+        knowledgePointId: 'point-1',
+        sortOrder: 1,
+        isAnchorValid: true,
+        createdAt: '2026-06-25T00:00:00.000Z',
+        updatedAt: '2026-06-25T00:00:00.000Z'
+      },
+      {
+        id: 'source-2',
+        noteId: 'note-1',
+        sourceText: 'B',
+        knowledgePointId: 'point-1',
+        sortOrder: 3,
+        isAnchorValid: true,
+        createdAt: '2026-06-25T00:00:00.000Z',
+        updatedAt: '2026-06-25T00:00:00.000Z'
+      }
+    ],
+    tagIds: [],
+    noteIds: ['note-1']
+  });
 });

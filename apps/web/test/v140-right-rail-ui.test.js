@@ -12,6 +12,10 @@ const sectionMenuRenderersJs = fs.readFileSync(
   'utf8'
 );
 const sidebarStatsJs = fs.readFileSync(path.resolve(__dirname, '../lib/sidebar/stats.js'), 'utf8');
+const navigationSelectionJs = fs.readFileSync(
+  path.resolve(__dirname, '../lib/navigation/selection.js'),
+  'utf8'
+);
 
 assert.match(
   sectionMenuRenderersJs,
@@ -38,9 +42,15 @@ assert.match(
 );
 
 assert.match(
+  navigationSelectionJs,
+  /function buildFolderPath\(/,
+  'info tab should reconstruct the current note path through the navigation selection module'
+);
+
+assert.match(
   clientJs,
-  /function buildFolderPath\(folderId\)/,
-  'info tab should reconstruct the current note path instead of only showing the leaf folder name'
+  /folderPath:\s*buildFolderPath\(/,
+  'info tab should pass the reconstructed folder path into the info panel renderer'
 );
 
 console.log('ok - V1.4.0 right rail tab shell hooks are present');

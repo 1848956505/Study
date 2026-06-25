@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
 
 import {
+  buildTagInput,
   buildUniqueTagId,
+  findTagByName,
+  normalizeTagName,
   removeTagFromCollections,
   upsertTag
 } from '../lib/tags/state.js';
@@ -59,6 +62,41 @@ assert.equal(
   buildUniqueTagId('CLIP', tags),
   'tag-clip-2',
   'buildUniqueTagId should avoid existing ids'
+);
+
+assert.equal(
+  normalizeTagName('  New Tag  '),
+  'New Tag',
+  'normalizeTagName should trim input'
+);
+
+assert.deepEqual(
+  findTagByName(tags, ' clip '),
+  { id: 'tag-clip', name: 'CLIP' },
+  'findTagByName should match names case-insensitively'
+);
+
+assert.equal(
+  findTagByName(tags, ''),
+  null,
+  'findTagByName should ignore empty names'
+);
+
+assert.deepEqual(
+  buildTagInput({ name: ' New Tag ', tags, spaceId: 'space-1' }),
+  {
+    id: 'tag-new-tag',
+    spaceId: 'space-1',
+    name: 'New Tag',
+    color: '#3c68ff'
+  },
+  'buildTagInput should create the default tag payload'
+);
+
+assert.equal(
+  buildTagInput({ name: ' ', tags, spaceId: 'space-1' }),
+  null,
+  'buildTagInput should return null for empty names'
 );
 
 console.log('ok - tag state helpers update pure collections');

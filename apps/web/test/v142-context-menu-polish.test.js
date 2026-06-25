@@ -6,20 +6,21 @@ import { fileURLToPath } from 'node:url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const clientJs = fs.readFileSync(path.resolve(__dirname, '../src/client.js'), 'utf8');
+const editorContextIconsJs = fs.readFileSync(path.resolve(__dirname, '../lib/editor/context-menu-icons.js'), 'utf8');
 const componentsCss = fs.readFileSync(path.resolve(__dirname, '../styles/components.css'), 'utf8');
 
 assert.match(
-  clientJs,
+  editorContextIconsJs,
   /function renderEditorContextIconSvg\(icon\)/,
   'V1.4.2 should replace ad-hoc glyph strings with a dedicated SVG icon renderer'
 );
 assert.match(
-  clientJs,
+  editorContextIconsJs,
   /stroke-linecap="round"[\s\S]*stroke-linejoin="round"/,
   'context menu icons should use a rounded, visually consistent SVG style'
 );
 assert.doesNotMatch(
-  clientJs,
+  editorContextIconsJs,
   /📋|🗑|✂|⧉|❞|◯✓|⇤|⇥/,
   'context menu should no longer rely on emoji or mismatched text glyph icons'
 );

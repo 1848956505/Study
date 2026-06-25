@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import {
+  buildFolderPath,
   openFolderBranch,
   resolveFolderSelection,
   resolveNavigationSelection,
@@ -38,6 +39,14 @@ runTest('openFolderBranch opens the folder and all ancestors without mutating in
 
   assert.deepEqual(nextOpenFolders, { other: false, leaf: true, child: true, root: true });
   assert.deepEqual(openFolders, { other: false });
+});
+
+runTest('buildFolderPath returns the root uncategorized path without a folder', () => {
+  assert.equal(buildFolderPath({ folderId: null, foldersById }), '资料 / 未分类');
+});
+
+runTest('buildFolderPath returns the full ancestor path', () => {
+  assert.equal(buildFolderPath({ folderId: 'leaf', foldersById }), '资料 / Root / Child / Leaf');
 });
 
 runTest('resolveNavigationSelection clears invalid folder and stale tabs', () => {

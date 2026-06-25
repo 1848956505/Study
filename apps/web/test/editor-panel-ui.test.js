@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const clientJs = fs.readFileSync(path.resolve(__dirname, '../src/client.js'), 'utf8');
+const menuRenderersJs = fs.readFileSync(path.resolve(__dirname, '../lib/editor/menu-renderers.js'), 'utf8');
 const milkdownEntry = fs.readFileSync(path.resolve(__dirname, '../lib/editor/milkdown-entry.js'), 'utf8');
 const componentsCss = fs.readFileSync(path.resolve(__dirname, '../styles/components.css'), 'utf8');
 
@@ -22,17 +23,17 @@ assert.match(
   'editor find panel should expose an explicit previous-match action'
 );
 assert.match(
-  clientJs,
+  menuRenderersJs,
   /function renderFormatMenu/,
   'editor format menu should provide a render function for the popover content'
 );
 assert.match(
-  clientJs,
-  /renderEditorMenuItem\(\{[\s\S]*actionAttr: 'data-format-menu-action'/,
+  menuRenderersJs,
+  /actionAttr: 'data-format-menu-action'/,
   'editor format menu should render actionable format menu items'
 );
 
-const formatButtonsMatch = clientJs.match(/const formatButtons = \[([\s\S]*?)\];/);
+const formatButtonsMatch = menuRenderersJs.match(/const FORMAT_MENU_ITEMS = \[([\s\S]*?)\];/);
 assert.ok(formatButtonsMatch, 'editor format button definitions should exist');
 assert.doesNotMatch(
   formatButtonsMatch[1],
@@ -45,8 +46,8 @@ assert.match(
   'editor format menu should use Chinese labels and expose a highlight action'
 );
 assert.match(
-  clientJs,
-  /const paragraphMenuItems = \[[\s\S]*label: 'H1'[\s\S]*label: 'H2'[\s\S]*label: 'H3'[\s\S]*label: 'H4'[\s\S]*label: 'H5'[\s\S]*label: 'H6'/,
+  menuRenderersJs,
+  /const PARAGRAPH_MENU_ITEMS = \[[\s\S]*label: 'H1'[\s\S]*label: 'H2'[\s\S]*label: 'H3'[\s\S]*label: 'H4'[\s\S]*label: 'H5'[\s\S]*label: 'H6'/,
   'editor paragraph menu should use H1-H6 heading labels'
 );
 assert.match(
@@ -65,7 +66,7 @@ assert.match(
   'active find matches should have a dedicated highlight style'
 );
 assert.match(
-  clientJs,
+  menuRenderersJs,
   /label: '内部链接'/,
   'editor format menu should expose an internal link action'
 );

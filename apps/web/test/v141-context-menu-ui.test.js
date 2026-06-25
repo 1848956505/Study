@@ -10,6 +10,7 @@ const mainJs = fs.readFileSync(path.resolve(__dirname, '../src/main.js'), 'utf8'
 const componentsCss = fs.readFileSync(path.resolve(__dirname, '../styles/components.css'), 'utf8');
 const milkdownEntry = fs.readFileSync(path.resolve(__dirname, '../lib/editor/milkdown-entry.js'), 'utf8');
 const sidebarInfoPanelJs = fs.readFileSync(path.resolve(__dirname, '../lib/sidebar/info-panel.js'), 'utf8');
+const editorContextModelJs = fs.readFileSync(path.resolve(__dirname, '../lib/editor/context-menu-model.js'), 'utf8');
 
 assert.match(
   sidebarInfoPanelJs,
@@ -33,33 +34,33 @@ assert.match(
   'editor surface should intercept right-clicks to open the custom quick menu'
 );
 assert.match(
-  clientJs,
-  /const editorContextPrimaryActions = \[[\s\S]*cut[\s\S]*copy[\s\S]*paste[\s\S]*delete[\s\S]*\];/,
+  editorContextModelJs,
+  /EDITOR_CONTEXT_PRIMARY_ACTIONS = \[[\s\S]*cut[\s\S]*copy[\s\S]*paste[\s\S]*delete[\s\S]*\];/,
   'context menu should define the four primary actions at the top'
 );
 assert.match(
-  clientJs,
-  /const editorContextFormatActions = \[[\s\S]*bold[\s\S]*italic[\s\S]*codeblock[\s\S]*quote[\s\S]*\];/,
+  editorContextModelJs,
+  /EDITOR_CONTEXT_FORMAT_ACTIONS = \[[\s\S]*bold[\s\S]*italic[\s\S]*codeblock[\s\S]*quote[\s\S]*\];/,
   'context menu should include Typora-like inline formatting actions'
 );
 assert.match(
-  clientJs,
-  /const editorContextListActions = \[[\s\S]*ordered[\s\S]*bullet[\s\S]*task-list[\s\S]*\];/,
+  editorContextModelJs,
+  /EDITOR_CONTEXT_LIST_ACTIONS = \[[\s\S]*ordered[\s\S]*bullet[\s\S]*task-list[\s\S]*\];/,
   'context menu should expose ordered, bullet, and task list actions'
 );
 assert.match(
-  clientJs,
-  /const editorContextIndentActions = \[[\s\S]*outdent[\s\S]*indent[\s\S]*\];/,
+  editorContextModelJs,
+  /EDITOR_CONTEXT_INDENT_ACTIONS = \[[\s\S]*outdent[\s\S]*indent[\s\S]*\];/,
   'context menu should expose outdent and indent actions'
 );
 assert.match(
-  clientJs,
-  /const editorContextParagraphItems = \[[\s\S]*paragraph[\s\S]*heading-1[\s\S]*heading-2[\s\S]*heading-3[\s\S]*heading-4[\s\S]*heading-5[\s\S]*heading-6[\s\S]*\];/,
+  editorContextModelJs,
+  /EDITOR_CONTEXT_PARAGRAPH_ITEMS = \[[\s\S]*paragraph[\s\S]*heading-1[\s\S]*heading-2[\s\S]*heading-3[\s\S]*heading-4[\s\S]*heading-5[\s\S]*heading-6[\s\S]*\];/,
   'paragraph submenu should expose H0-H6 entries'
 );
 assert.match(
-  clientJs,
-  /const editorContextInsertItems = \[[\s\S]*hr[\s\S]*image[\s\S]*codeblock[\s\S]*quote[\s\S]*paragraph-above[\s\S]*paragraph-below[\s\S]*\];/,
+  editorContextModelJs,
+  /EDITOR_CONTEXT_INSERT_ITEMS = \[[\s\S]*hr[\s\S]*image[\s\S]*codeblock[\s\S]*quote[\s\S]*paragraph-above[\s\S]*paragraph-below[\s\S]*\];/,
   'insert submenu should expose image, divider, code block, quote, and paragraph insertion actions'
 );
 assert.match(

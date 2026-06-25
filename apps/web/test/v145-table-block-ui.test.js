@@ -6,23 +6,25 @@ import { fileURLToPath } from 'node:url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const clientJs = fs.readFileSync(path.resolve(__dirname, '../src/client.js'), 'utf8');
+const menuRenderersJs = fs.readFileSync(path.resolve(__dirname, '../lib/editor/menu-renderers.js'), 'utf8');
+const editorContextModelJs = fs.readFileSync(path.resolve(__dirname, '../lib/editor/context-menu-model.js'), 'utf8');
 const milkdownEntry = fs.readFileSync(path.resolve(__dirname, '../lib/editor/milkdown-entry.js'), 'utf8');
 const componentsCss = fs.readFileSync(path.resolve(__dirname, '../styles/components.css'), 'utf8');
 
 assert.match(
-  clientJs,
-  /const formatButtons = \[[\s\S]*\{ key: 'table', label: '表格' \}[\s\S]*\];/,
+  menuRenderersJs,
+  /const PARAGRAPH_MENU_ITEMS = \[[\s\S]*\{ key: 'table', label: '表格' \}[\s\S]*\];/,
   'format menu should expose a table insertion entry'
 );
 
 assert.match(
-  clientJs,
-  /const editorContextInsertItems = \[[\s\S]*'table'[\s\S]*\];/,
+  editorContextModelJs,
+  /EDITOR_CONTEXT_INSERT_ITEMS = \[[\s\S]*'table'[\s\S]*\];/,
   'context menu insert submenu should expose table insertion'
 );
 
 assert.match(
-  clientJs,
+  editorContextModelJs,
   /table: \{ label: '表格'(?:, icon: 'table')? \}/,
   'table insertion should have a localized menu label'
 );
