@@ -205,6 +205,7 @@ import { bindDocumentActionEvents } from '../lib/events/document-action-events.j
 import { bindMenuEvents } from '../lib/events/menu-events.js';
 import { bindFolderTreeEvents } from '../lib/events/folder-tree-events.js';
 import { bindNoteTabEvents } from '../lib/events/note-tab-events.js';
+import { bindEditorContentEvents } from '../lib/events/editor-content-events.js';
 import { knowledgeApi } from './services/knowledge-api.js';
 
 const BACKEND_CACHE_KEY = 'study-accelerator.backend-workspace-cache';
@@ -493,6 +494,10 @@ function bindEvents() {
     // 笔记标签：tab 关闭/选中/拖拽重排 + 右键菜单
     handleTabClose, openTabMenu, syncTabDragIndicators,
     reorderTabs, resetTabDragState, handleTabMenuAction,
+    // 编辑器内容：contextmenu / knowledge-point-marker / 源码模式
+    openEditorContextMenu, focusKnowledgePointFromMarker,
+    handleEditorContextMenuAction,
+    scheduleAutosave, syncSourcePreview, persistDraft,
     // 滚动位置（window beforeunload）
     saveCurrentEditorScrollPosition, persistScrollPositions
   };
@@ -506,7 +511,8 @@ function bindEvents() {
   bindMenuEvents({ state, elements, deps });
   bindFolderTreeEvents({ state, elements, deps });
   bindNoteTabEvents({ state, elements, deps });
-  // editor-content / aside 由后续拆分 commit 逐步加入。
+  bindEditorContentEvents({ state, elements, deps });
+  // aside 由后续拆分 commit 加入。
   // Claude Code 拆分 bindEvents 时迁出（commit 8，2026-06-25）：
   // 原本的 elements.folderTree 上的 10 个监听器（2 click + contextmenu +
   // dragstart/dragover/drop/dragend + submit/keydown/input）移至
@@ -689,41 +695,13 @@ function bindEvents() {
     targetHeading.scrollIntoView({ behavior: 'smooth', block: 'start' });
   });
 
-  elements.editorContent?.addEventListener('contextmenu', (event) => {
-    if (!currentEditorHost || !getCurrentNote() || state.view.showSourceEditor) {
-      return;
-    }
-
-    const target = event.target instanceof Element ? event.target : null;
-    if (!target?.closest('.milkdown-host, .preview-rendered')) {
-      return;
-    }
-
-    event.preventDefault();
-    openEditorContextMenu({
-      x: event.clientX,
-      y: event.clientY
-    });
-  });
-
-  elements.editorContent?.addEventListener('knowledge-point-marker-click', (event) => {
-    const { sourceId, knowledgePointId } = event.detail ?? {};
-    if (!sourceId && !knowledgePointId) {
-      return;
-    }
-
-    focusKnowledgePointFromMarker({ sourceId, knowledgePointId });
-  });
-
-  elements.editorContextMenu?.addEventListener('click', (event) => {
-    const actionButton = event.target.closest('[data-editor-context-action]');
-    if (!actionButton?.dataset.editorContextAction) {
-      return;
-    }
-
-    event.stopPropagation();
-    void handleEditorContextMenuAction(actionButton.dataset.editorContextAction);
-  });
+  // Claude Code 拆分 bindEvents 时迁出（commit 10，2026-06-25）：
+  // 原本 elements.editorContent 上的 4 个监听器（contextmenu / knowledge-
+  // point-marker-click / input / click）和 elements.editorContextMenu.click
+  // 移至 apps/web/lib/events/editor-content-events.js。contextmenu 中对
+  // event.target 的 Element 判定在 binder 内通过 globalThis.Element 引用
+  // 实现，保留 Node 测试可运行性。源码模式保存按钮的 void persistDraft(
+  // { immediate: true }) 行为不变。
 
   // Claude Code 拆分 bindEvents 时迁出（commit 3，2026-06-25）：
   // 原本的两段 document.click 监听器（格式化按钮 + 外部点击关闭菜单）
@@ -804,25 +782,7 @@ function bindEvents() {
 
   // （已迁出：elements.editorMenuBar.click，详见 apps/web/lib/events/menu-events.js）
 
-  elements.editorContent?.addEventListener('input', (event) => {
-    const sourceInput = event.target.closest('[data-source-editor-input]');
-    if (!sourceInput) {
-      return;
-    }
-
-    state.draftMarkdown = sourceInput.value;
-    scheduleAutosave();
-    syncSourcePreview();
-  });
-
-  elements.editorContent?.addEventListener('click', (event) => {
-    const sourceSaveButton = event.target.closest('[data-source-save]');
-    if (!sourceSaveButton) {
-      return;
-    }
-
-    void persistDraft({ immediate: true });
-  });
+  // Claude Code 拆分 bindEvents 时迁出（commit 10，2026-06-25）：见上文。
 
   // Claude Code 拆分 bindEvents 时迁出（commit 5，2026-06-25）：
   // 原本的 document.input 监听器（表格对话框字段 + 查找面板字段）移至
