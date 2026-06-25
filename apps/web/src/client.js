@@ -206,6 +206,7 @@ import { bindMenuEvents } from '../lib/events/menu-events.js';
 import { bindFolderTreeEvents } from '../lib/events/folder-tree-events.js';
 import { bindNoteTabEvents } from '../lib/events/note-tab-events.js';
 import { bindEditorContentEvents } from '../lib/events/editor-content-events.js';
+import { bindAsideEvents } from '../lib/events/aside-events/index.js';
 import { knowledgeApi } from './services/knowledge-api.js';
 
 const BACKEND_CACHE_KEY = 'study-accelerator.backend-workspace-cache';
@@ -498,6 +499,12 @@ function bindEvents() {
     openEditorContextMenu, focusKnowledgePointFromMarker,
     handleEditorContextMenuAction,
     scheduleAutosave, syncSourcePreview, persistDraft,
+    // 侧栏：tab 切换 / 18 个 asideContent.click 分支 / 4 类 input / submit / keydown
+    renderSidebar,
+    addTagToCurrentNote, removeTagFromCurrentNote, createTagAndAssignToCurrentNote,
+    updateCurrentKnowledgePoint, attachSelectionToExistingKnowledgePoint,
+    removeKnowledgePointSourceFromCurrentNote, deleteKnowledgePointFromLibrary,
+    selectKnowledgePointSource, findOutlineHeadingTarget,
     // 滚动位置（window beforeunload）
     saveCurrentEditorScrollPosition, persistScrollPositions
   };
@@ -512,6 +519,7 @@ function bindEvents() {
   bindFolderTreeEvents({ state, elements, deps });
   bindNoteTabEvents({ state, elements, deps });
   bindEditorContentEvents({ state, elements, deps });
+  bindAsideEvents({ state, elements, deps });
   // aside 由后续拆分 commit 加入。
   // Claude Code 拆分 bindEvents 时迁出（commit 8，2026-06-25）：
   // 原本的 elements.folderTree 上的 10 个监听器（2 click + contextmenu +
@@ -526,176 +534,19 @@ function bindEvents() {
   // 菜单 toggle + 5 个动作派发）移至 apps/web/lib/events/menu-events.js。
   // 注意 editorMenuBar 顶部 event.stopPropagation() 保留。
 
-  elements.asideTabs?.addEventListener('click', (event) => {
-    const button = event.target.closest('[data-aside-tab]');
-    if (!button?.dataset.asideTab || state.asideTab === button.dataset.asideTab) {
-      return;
-    }
-    state.asideTab = button.dataset.asideTab;
-    renderSidebar(getCurrentNote());
-  });
+  // Claude Code 拆分 bindEvents 时迁出（commit 11，2026-06-25）：
+  // 侧栏相关 5 个监听器全部移至 apps/web/lib/events/aside-events/：
+  //   - asideTabs.click          → tabs.js
+  //   - asideContent.click       → click.js（15 个 [data-*] 分支）
+  //   - asideContent.input       → input.js（4 类输入）
+  //   - asideContent.submit      → forms.js
+  //   - asideContent.keydown     → forms.js
+  // 桶入口 bindAsideEvents 串行调用 4 个子 binder，注册顺序与原
+  // bindEvents() 完全一致；行为零变化（closest + 早退 + renderSidebar
+  // 调用均保留）。
 
-  elements.asideContent?.addEventListener('click', (event) => {
-    const linkedButton = event.target.closest('[data-linked-id]');
-    if (linkedButton?.dataset.linkedId) {
-      void selectNote(linkedButton.dataset.linkedId, { syncFolder: true });
-      return;
-    }
-
-    const attachmentButton = event.target.closest('[data-attachment-name]');
-    if (attachmentButton?.dataset.attachmentName) {
-      flashStatus(`已选中附件：${attachmentButton.dataset.attachmentName}`);
-      return;
-    }
-
-    const noteTagAddButton = event.target.closest('[data-note-tag-add]');
-    if (noteTagAddButton?.dataset.noteTagAdd) {
-      state.noteTagComposer.isExpanded = true;
-      void addTagToCurrentNote(noteTagAddButton.dataset.noteTagAdd);
-      return;
-    }
-
-    const noteTagRemoveButton = event.target.closest('[data-note-tag-remove]');
-    if (noteTagRemoveButton?.dataset.noteTagRemove) {
-      void removeTagFromCurrentNote(noteTagRemoveButton.dataset.noteTagRemove);
-      return;
-    }
-
-    const noteTagToggleButton = event.target.closest('[data-note-tag-toggle]');
-    if (noteTagToggleButton) {
-      state.noteTagComposer.isExpanded = !state.noteTagComposer.isExpanded;
-      renderSidebar(getCurrentNote());
-      return;
-    }
-
-    const noteTagCreateButton = event.target.closest('[data-note-tag-create]');
-    if (noteTagCreateButton) {
-      void createTagAndAssignToCurrentNote(state.noteTagComposer.draft);
-      return;
-    }
-
-    const knowledgePointFilterToggle = event.target.closest('[data-knowledge-point-filter-toggle]');
-    if (knowledgePointFilterToggle) {
-      state.knowledgePointFilters.isOpen = !state.knowledgePointFilters.isOpen;
-      renderSidebar(getCurrentNote());
-      return;
-    }
-
-    const knowledgePointFilterClear = event.target.closest('[data-knowledge-point-filter-clear]');
-    if (knowledgePointFilterClear) {
-      state.knowledgePointFilters = { query: '', tagIds: [], isOpen: false };
-      renderSidebar(getCurrentNote());
-      return;
-    }
-
-    const knowledgePointFilterTag = event.target.closest('[data-knowledge-point-filter-tag]');
-    if (knowledgePointFilterTag?.dataset.knowledgePointFilterTag) {
-      const tagId = knowledgePointFilterTag.dataset.knowledgePointFilterTag;
-      const selectedTagIds = new Set(state.knowledgePointFilters.tagIds ?? []);
-      if (selectedTagIds.has(tagId)) {
-        selectedTagIds.delete(tagId);
-      } else {
-        selectedTagIds.add(tagId);
-      }
-      state.knowledgePointFilters = {
-        ...state.knowledgePointFilters,
-        tagIds: [...selectedTagIds],
-        isOpen: true
-      };
-      renderSidebar(getCurrentNote());
-      return;
-    }
-
-    const knowledgePointToggle = event.target.closest('[data-knowledge-point-toggle]');
-    if (knowledgePointToggle?.dataset.knowledgePointToggle) {
-      const pointId = knowledgePointToggle.dataset.knowledgePointToggle;
-      state.expandedKnowledgePointIds = {
-        ...state.expandedKnowledgePointIds,
-        [pointId]: !state.expandedKnowledgePointIds[pointId]
-      };
-      renderSidebar(getCurrentNote());
-      return;
-    }
-
-    const knowledgePointEdit = event.target.closest('[data-knowledge-point-edit]');
-    if (knowledgePointEdit?.dataset.knowledgePointEdit) {
-      const point = state.knowledgePoints.find((item) => item.id === knowledgePointEdit.dataset.knowledgePointEdit);
-      if (!point) {
-        return;
-      }
-      state.knowledgePointEditing = {
-        id: point.id,
-        title: point.title,
-        comment: point.comment ?? ''
-      };
-      state.expandedKnowledgePointIds = {
-        ...state.expandedKnowledgePointIds,
-        [point.id]: true
-      };
-      renderSidebar(getCurrentNote());
-      return;
-    }
-
-    const knowledgePointEditCancel = event.target.closest('[data-knowledge-point-edit-cancel]');
-    if (knowledgePointEditCancel) {
-      state.knowledgePointEditing = null;
-      renderSidebar(getCurrentNote());
-      return;
-    }
-
-    const knowledgePointAttachToggle = event.target.closest('[data-knowledge-point-attach-toggle]');
-    if (knowledgePointAttachToggle) {
-      state.knowledgePointAttachComposer = {
-        ...state.knowledgePointAttachComposer,
-        isOpen: !state.knowledgePointAttachComposer.isOpen
-      };
-      renderSidebar(getCurrentNote());
-      return;
-    }
-
-    const knowledgePointAttachExisting = event.target.closest('[data-knowledge-point-attach-existing]');
-    if (knowledgePointAttachExisting?.dataset.knowledgePointAttachExisting) {
-      void attachSelectionToExistingKnowledgePoint(knowledgePointAttachExisting.dataset.knowledgePointAttachExisting);
-      return;
-    }
-
-    const knowledgePointSourceRemove = event.target.closest('[data-knowledge-point-source-remove]');
-    if (knowledgePointSourceRemove?.dataset.knowledgePointSourceRemove) {
-      void removeKnowledgePointSourceFromCurrentNote(knowledgePointSourceRemove.dataset.knowledgePointSourceRemove);
-      return;
-    }
-
-    const knowledgePointDelete = event.target.closest('[data-knowledge-point-delete]');
-    if (knowledgePointDelete?.dataset.knowledgePointDelete) {
-      void deleteKnowledgePointFromLibrary(knowledgePointDelete.dataset.knowledgePointDelete);
-      return;
-    }
-
-    const knowledgePointSourceJump = event.target.closest('[data-knowledge-point-source-jump]');
-    if (knowledgePointSourceJump?.dataset.knowledgePointSourceJump) {
-      void selectKnowledgePointSource(knowledgePointSourceJump.dataset.knowledgePointSourceJump);
-      return;
-    }
-
-    const outlineButton = event.target.closest('[data-outline-id]');
-    if (!outlineButton?.dataset.outlineId) {
-      return;
-    }
-
-    const outlineIndex = Number.parseInt(outlineButton.dataset.outlineIndex ?? '', 10);
-    const targetHeading = findOutlineHeadingTarget(
-      outlineButton.dataset.outlineId,
-      Number.isNaN(outlineIndex) ? -1 : outlineIndex
-    );
-    if (!targetHeading) {
-      flashStatus('当前标题尚未出现在预览区');
-      return;
-    }
-
-    targetHeading.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  });
-
-  // Claude Code 拆分 bindEvents 时迁出（commit 10，2026-06-25）：
+  // Claude Code 拆分 bindEvents 时迁出（commit 3，2026-06-25）：
+  // Claude Code 拆分 bindEvents 时迁出（commit 4，2026-06-25）：
   // 原本 elements.editorContent 上的 4 个监听器（contextmenu / knowledge-
   // point-marker-click / input / click）和 elements.editorContextMenu.click
   // 移至 apps/web/lib/events/editor-content-events.js。contextmenu 中对
@@ -712,67 +563,7 @@ function bindEvents() {
   // 器快捷键/表格对话框/查找面板）移至 apps/web/lib/events/document-keyboard-events.js。
   // 关键：第二个监听器 `, true` 捕获阶段已保留。
 
-  elements.asideContent?.addEventListener('input', (event) => {
-    const knowledgePointFilterInput = event.target.closest('[data-knowledge-point-filter-input]');
-    if (knowledgePointFilterInput) {
-      state.knowledgePointFilters = {
-        ...state.knowledgePointFilters,
-        query: knowledgePointFilterInput.value,
-        isOpen: true
-      };
-      renderSidebar(getCurrentNote());
-      return;
-    }
-
-    const knowledgePointEditForm = event.target.closest('[data-knowledge-point-edit-form]');
-    if (knowledgePointEditForm && state.knowledgePointEditing) {
-      const formData = new FormData(knowledgePointEditForm);
-      state.knowledgePointEditing = {
-        ...state.knowledgePointEditing,
-        title: String(formData.get('title') ?? ''),
-        comment: String(formData.get('comment') ?? '')
-      };
-      return;
-    }
-
-    const knowledgePointAttachQuery = event.target.closest('[data-knowledge-point-attach-query]');
-    if (knowledgePointAttachQuery) {
-      state.knowledgePointAttachComposer = {
-        ...state.knowledgePointAttachComposer,
-        query: knowledgePointAttachQuery.value,
-        isOpen: true
-      };
-      renderSidebar(getCurrentNote());
-      return;
-    }
-
-    const input = event.target.closest('[data-note-tag-input]');
-    if (!input) {
-      return;
-    }
-
-    state.noteTagComposer.draft = input.value;
-  });
-
-  elements.asideContent?.addEventListener('submit', (event) => {
-    const knowledgePointEditForm = event.target.closest('[data-knowledge-point-edit-form]');
-    if (!knowledgePointEditForm?.dataset.knowledgePointEditForm) {
-      return;
-    }
-
-    event.preventDefault();
-    void updateCurrentKnowledgePoint(knowledgePointEditForm.dataset.knowledgePointEditForm, knowledgePointEditForm);
-  });
-
-  elements.asideContent?.addEventListener('keydown', (event) => {
-    const input = event.target.closest('[data-note-tag-input]');
-    if (!input || event.key !== 'Enter') {
-      return;
-    }
-
-    event.preventDefault();
-    void createTagAndAssignToCurrentNote(input.value);
-  });
+  // Claude Code 拆分 bindEvents 时迁出（commit 11，2026-06-25）：见上方 comment 块。
 
   // Claude Code 拆分 bindEvents 时迁出（commit 9，2026-06-25）：
   // 原本的 elements.noteTabs（6 个监听器：click / contextmenu / dragstart
