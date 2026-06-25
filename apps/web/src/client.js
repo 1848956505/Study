@@ -201,6 +201,7 @@ import { bindWindowEvents } from '../lib/events/window-events.js';
 import { bindDocumentClickEvents } from '../lib/events/document-click-events.js';
 import { bindDocumentKeyboardEvents } from '../lib/events/document-keyboard-events.js';
 import { bindDocumentInputEvents } from '../lib/events/document-input-events.js';
+import { bindDocumentActionEvents } from '../lib/events/document-action-events.js';
 import { knowledgeApi } from './services/knowledge-api.js';
 
 const BACKEND_CACHE_KEY = 'study-accelerator.backend-workspace-cache';
@@ -495,7 +496,8 @@ function bindEvents() {
   bindDocumentClickEvents({ state, elements, deps });
   bindDocumentKeyboardEvents({ state, elements, deps });
   bindDocumentInputEvents({ state, elements, deps });
-  // document-action / menu / folder-tree / note-tab /
+  bindDocumentActionEvents({ state, elements, deps });
+  // menu / folder-tree / note-tab /
   // editor-content / aside 由后续拆分 commit 逐步加入。
   elements.folderTree?.addEventListener('click', (event) => {
     const clickTarget = resolveClickTarget(event.target);
@@ -1097,30 +1099,9 @@ function bindEvents() {
   // apps/web/lib/events/document-input-events.js。host 通过 deps 中的
   // getter 注入，保持 live binding。
 
-  document.addEventListener('click', (event) => {
-    const tableDialogAction = event.target.closest('[data-editor-table-dialog-action]');
-    if (tableDialogAction?.dataset.editorTableDialogAction) {
-      const action = tableDialogAction.dataset.editorTableDialogAction;
-      if (action === 'confirm') {
-        void submitTableInsertDialog();
-      } else {
-        closeTableInsertDialog();
-      }
-      return;
-    }
-
-    const panelAction = event.target.closest('[data-editor-panel-action]');
-    if (panelAction?.dataset.editorPanelAction) {
-      void handleEditorPanelAction(panelAction.dataset.editorPanelAction);
-      return;
-    }
-
-    const saveButton = event.target.closest('[data-save-now]');
-    if (!saveButton) {
-      return;
-    }
-    void persistDraft({ immediate: true });
-  });
+  // Claude Code 拆分 bindEvents 时迁出（commit 6，2026-06-25）：
+  // 原本的 document.click 监听器（表格对话框动作 / 编辑器面板动作 /
+  // 全局保存按钮）移至 apps/web/lib/events/document-action-events.js。
 
   window.addEventListener('beforeunload', () => {
     saveCurrentEditorScrollPosition();
