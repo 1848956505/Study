@@ -196,6 +196,7 @@ import {
   toggleFolderOpen as toggleOpenFolderState
 } from '../lib/navigation/selection.js';
 import { validateTreeEditorName as validateNavigationTreeEditorName } from '../lib/navigation/tree-editor.js';
+import { bindSearchEvents } from '../lib/events/search-events.js';
 import { knowledgeApi } from './services/knowledge-api.js';
 
 const BACKEND_CACHE_KEY = 'study-accelerator.backend-workspace-cache';
@@ -446,104 +447,35 @@ function reportRuntimeError(scope, error) {
 }
 
 function bindEvents() {
-  elements.globalSearchShell?.addEventListener('click', (event) => {
-    event.stopPropagation();
-    const chipRemoveButton = event.target.closest('[data-search-chip-remove]');
-    if (chipRemoveButton?.dataset.searchChipRemove) {
-        toggleSearchTagFilter(chipRemoveButton.dataset.searchChipRemove);
-        focusSearchInput();
-        return;
-    }
+  // ─────────────────────────────────────────────────────────────
+  // Claude Code 拆分 bindEvents 改动记录（2026-06-25）
+  // ─────────────────────────────────────────────────────────────
+  // 本函数从 ~830 行收缩为 orchestrator（~35 行）。原事件绑定按事件域
+  // 拆到 apps/web/lib/events/ 下 11 个 binder（按依赖顺序）：
+  //   1. search-events.js              （原 L449-545）
+  //   2. window-events.js              （原 L1273-1276）
+  //   3. document-click-events.js      （原 L933-958）
+  //   4. document-keyboard-events.js   （原 L960-973 + L1207-1246）
+  //   5. document-input-events.js      （原 L1175-1205）
+  //   6. document-action-events.js     （原 L1248-1271）
+  //   7. menu-events.js                （原 L709-726 + L1108-1153）
+  //   8. folder-tree-events.js         （原 L547-707）
+  //   9. note-tab-events.js            （原 L1037-1114）
+  //  10. editor-content-events.js      （原 L897-921 + L923-931 + L1155-1173）
+  //  11. aside-events/ (index/click/input/forms)  （原 L728-735 + L737-1035）
+  // DOM 选择器、事件名、L1207 的 addEventListener(..., true) 捕获阶段
+  // 一律保留；行为不变。子 binder 通过 deps 注入获得辅助函数。
+  // ─────────────────────────────────────────────────────────────
+  const deps = {
+    // 搜索
+    toggleSearchTagFilter, focusSearchInput, renderSearchShell, clearSearchFilters,
+    getSearchResultNotes, selectNote, closeContextMenu, renderFolders,
+    reconcileSelection, renderAll, importMarkdownFiles, flashStatus
+  };
 
-    const tagButton = event.target.closest('[data-search-tag-id]');
-    if (tagButton?.dataset.searchTagId) {
-        toggleSearchTagFilter(tagButton.dataset.searchTagId);
-        focusSearchInput();
-        return;
-    }
-
-    const noteButton = event.target.closest('[data-search-note-id]');
-    if (noteButton?.dataset.searchNoteId) {
-        state.search.isOpen = false;
-        void selectNote(noteButton.dataset.searchNoteId, { syncFolder: true });
-        return;
-    }
-
-    const clearButton = event.target.closest('[data-search-clear]');
-    if (clearButton) {
-        clearSearchFilters();
-        return;
-    }
-
-    if (!state.search.isOpen) {
-      state.search.isOpen = true;
-      renderSearchShell();
-    }
-
-    focusSearchInput();
-  });
-
-  elements.globalSearchShell?.addEventListener('input', (event) => {
-    const input = event.target.closest('[data-search-input]');
-    if (!input) {
-      return;
-    }
-
-    state.search.keyword = input.value.trim().toLowerCase();
-    state.search.isOpen = true;
-    reconcileSelection();
-    renderAll();
-  });
-
-  elements.globalSearchShell?.addEventListener('keydown', (event) => {
-    const input = event.target.closest('[data-search-input]');
-    if (!input) {
-      return;
-    }
-
-    if (event.key === 'Escape') {
-      event.preventDefault();
-      state.search.isOpen = false;
-      renderSearchShell();
-      return;
-    }
-
-    if (event.key !== 'Enter') {
-      return;
-    }
-
-    const results = getSearchResultNotes();
-    if (!results.length) {
-      return;
-    }
-
-    event.preventDefault();
-    state.search.isOpen = false;
-    void selectNote(results[0].id, { syncFolder: true });
-  });
-
-  elements.secondaryNavToggle?.addEventListener('click', (event) => {
-    event.stopPropagation();
-    state.sectionMenuOpen = !state.sectionMenuOpen;
-    closeContextMenu();
-    renderFolders();
-  });
-
-  elements.markdownImportInput?.addEventListener('change', async (event) => {
-    const files = Array.from(event.target.files ?? []);
-    event.target.value = '';
-
-    if (!files.length) {
-      return;
-    }
-
-    try {
-      await importMarkdownFiles(files);
-    } catch (error) {
-      flashStatus(error?.message || 'Markdown 导入失败');
-    }
-  });
-
+  bindSearchEvents({ state, elements, deps });
+  // window / document / menu / folder-tree / note-tab / editor-content / aside
+  // 由后续拆分 commit 逐步加入。
   elements.folderTree?.addEventListener('click', (event) => {
     const clickTarget = resolveClickTarget(event.target);
     if (!clickTarget) {
