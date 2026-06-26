@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const clientJs = fs.readFileSync(path.resolve(__dirname, '../src/client.js'), 'utf8');
+const sidebarControllerJs = fs.readFileSync(path.resolve(__dirname, '../src/controllers/sidebar-controller.js'), 'utf8');
 const mainJs = fs.readFileSync(path.resolve(__dirname, '../src/main.js'), 'utf8');
 const sectionMenuRenderersJs = fs.readFileSync(
   path.resolve(__dirname, '../lib/navigation/section-menu-renderers.js'),
@@ -48,7 +49,7 @@ assert.match(
 );
 
 assert.match(
-  clientJs,
+  sidebarControllerJs,
   /folderPath:\s*buildFolderPath\(/,
   'info tab should pass the reconstructed folder path into the info panel renderer'
 );

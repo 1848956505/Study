@@ -60,14 +60,14 @@ assert.equal(sourceInput.sourceText, '加入已有知识点的新片段');
 assert.equal(sourceInput.startOffset, 12);
 assert.equal(sourceInput.endOffset, 24);
 
-const clientJs = readFileSync(new URL('../src/client.js', import.meta.url), 'utf8');
-assert.match(clientJs, /allKnowledgePoints/);
-assert.match(clientJs, /attachSelectionToExistingKnowledgePoint/);
-assert.match(clientJs, /removeKnowledgePointSourceFromCurrentNote/);
-assert.match(clientJs, /deleteKnowledgePointFromLibrary/);
-assert.match(clientJs, /knowledgeApi\.addSourceToKnowledgePoint\(pointId, sourceInput\)/);
-assert.match(clientJs, /knowledgeApi\.deleteKnowledgePointSource\(sourceId\)/);
-assert.match(clientJs, /knowledgeApi\.deleteKnowledgePoint\(pointId\)/);
-assert.match(clientJs, /knowledgeApi\.updateKnowledgePoint\(pointId, updates\)/);
+const knowledgePointControllerJs = readFileSync(new URL('../src/controllers/knowledge-point-controller.js', import.meta.url), 'utf8');
+assert.match(knowledgePointControllerJs, /allKnowledgePoints/);
+assert.match(knowledgePointControllerJs, /attachSelectionToExistingKnowledgePoint/);
+assert.match(knowledgePointControllerJs, /removeKnowledgePointSourceFromCurrentNote/);
+assert.match(knowledgePointControllerJs, /deleteKnowledgePointFromLibrary/);
+assert.match(knowledgePointControllerJs, /knowledgeApi\.addSourceToKnowledgePoint\(pointId, sourceInput\)/);
+assert.match(knowledgePointControllerJs, /knowledgeApi\.deleteKnowledgePointSource\(sourceId\)/);
+assert.match(knowledgePointControllerJs, /knowledgeApi\.deleteKnowledgePoint\(pointId\)/);
+assert.match(knowledgePointControllerJs, /knowledgeApi\.updateKnowledgePoint\(pointId, updates\)/);
 
 console.log('ok - V2.0.5 knowledge point management hooks are wired');

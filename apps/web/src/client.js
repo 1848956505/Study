@@ -209,6 +209,8 @@ import { bindEditorContentEvents } from '../lib/events/editor-content-events.js'
 import { bindAsideEvents } from '../lib/events/aside-events/index.js';
 import { createNavigationController } from './controllers/navigation-controller.js';
 import { createEditorController } from './controllers/editor-controller.js';
+import { createKnowledgePointController } from './controllers/knowledge-point-controller.js';
+import { createSidebarController } from './controllers/sidebar-controller.js';
 import { knowledgeApi } from './services/knowledge-api.js';
 
 const BACKEND_CACHE_KEY = 'study-accelerator.backend-workspace-cache';
@@ -341,6 +343,8 @@ const editorRuntime = {
 };
 let navigationController = null;
 let editorController = null;
+let knowledgePointController = null;
+let sidebarController = null;
 
 /** 笔记编辑器滚动位置记录（noteId → scrollTop） */
 const editorScrollPositions = {};
@@ -448,6 +452,24 @@ function cacheElements() {
 }
 
 function createControllers() {
+  knowledgePointController = createKnowledgePointController({
+    state,
+    elements,
+    editorRuntime,
+    knowledgeApi,
+    getCurrentNote,
+    renderSidebar,
+    flashStatus
+  });
+  sidebarController = createSidebarController({
+    state,
+    elements,
+    knowledgeApi,
+    getCurrentNote,
+    syncKnowledgePointMarkers,
+    flashStatus,
+    formatDate
+  });
   navigationController = createNavigationController({
     state,
     elements,
@@ -799,60 +821,18 @@ function reconcileSelection() {
   }
 }
 
-async function loadCurrentNoteSideData() {
-  if (state.dataMode === 'local') {
-    loadLocalNoteSideData(state.selectedNoteId);
-    return;
-  }
-  await loadApiNoteSideData(state.selectedNoteId);
+function loadCurrentNoteSideData(...args) {
+  return sidebarController.loadCurrentNoteSideData(...args);
 }
-
-async function loadApiNoteSideData(noteId) {
-  if (!noteId) {
-    clearNoteSideData();
-    syncKnowledgePointMarkers();
-    return;
-  }
-
-  try {
-    const note = state.allNotes.find((item) => item.id === noteId);
-    const spaceId = note?.spaceId ?? state.currentSpaceId;
-    const sideData = await knowledgeApi.loadNoteSideData({ noteId, spaceId });
-    state.linkedNotes = sideData.linkedNotes;
-    state.attachments = sideData.attachments;
-    state.knowledgePoints = sideData.knowledgePoints;
-    state.allKnowledgePoints = sideData.allKnowledgePoints;
-    state.knowledgePointTagGroups = sideData.knowledgePointTagGroups;
-    syncKnowledgePointMarkers();
-  } catch (error) {
-    clearNoteSideData({ keepEditing: true });
-    syncKnowledgePointMarkers();
-    flashStatus(`附加信息加载失败：${error.message}`);
-  }
+function loadApiNoteSideData(...args) {
+  return sidebarController.loadApiNoteSideData(...args);
 }
-
-function loadLocalNoteSideData(noteId) {
-  if (!noteId) {
-    clearNoteSideData();
-    syncKnowledgePointMarkers();
-    return;
-  }
-
-  Object.assign(state, createLocalNoteSideData({
-    noteId,
-    notes: state.allNotes,
-    attachments: knowledgeBaseSeed.attachments
-  }));
-  syncKnowledgePointMarkers();
+function loadLocalNoteSideData(...args) {
+  return sidebarController.loadLocalNoteSideData(...args);
 }
-
-function clearNoteSideData({ keepEditing = false } = {}) {
-  Object.assign(state, createClearedNoteSideData({
-    editing: state.knowledgePointEditing,
-    keepEditing
-  }));
+function clearNoteSideData(...args) {
+  return sidebarController.clearNoteSideData(...args);
 }
-
 function renderRail() {
   if (!elements.moduleRail) {
     return;
@@ -1080,99 +1060,21 @@ function syncSourcePreview(...args) {
   return editorController.syncSourcePreview(...args);
 }
 
-function findOutlineHeadingTarget(outlineId, outlineIndex) {
-  if (!elements.editorContent) {
-    return null;
-  }
-
-  if (outlineId) {
-    const escapedId = typeof CSS !== 'undefined' && typeof CSS.escape === 'function'
-      ? CSS.escape(outlineId)
-      : outlineId.replace(/"/g, '\\"');
-    const directMatch = elements.editorContent.querySelector(`#${escapedId}`);
-    if (directMatch) {
-      return directMatch;
-    }
-  }
-
-  if (!Number.isInteger(outlineIndex) || outlineIndex < 0) {
-    return null;
-  }
-
-  const renderedHeadings = elements.editorContent.querySelectorAll('h1, h2, h3, h4, h5, h6');
-  return renderedHeadings.item(outlineIndex) ?? null;
+function findOutlineHeadingTarget(...args) {
+  return sidebarController.findOutlineHeadingTarget(...args);
 }
-
-function renderSidebar(note) {
-  if (!elements.asideTabs || !elements.asideContent) {
-    return;
-  }
-
-  elements.asideTabs.innerHTML = renderAsideTabs({
-    tabs: ASIDE_TABS,
-    activeKey: state.asideTab
-  });
-
-  const contentKey = resolveAsideContentKey({
-    note,
-    activeTab: state.asideTab
-  });
-
-  if (contentKey === 'empty') {
-    elements.asideContent.innerHTML = renderAsideEmptyState();
-    return;
-  }
-
-  switch (contentKey) {
-    case 'outline':
-      elements.asideContent.innerHTML = renderOutlineTab(note);
-      return;
-    case 'concepts':
-      elements.asideContent.innerHTML = renderConceptsTab(note);
-      return;
-    case 'ai':
-      elements.asideContent.innerHTML = renderAiTab(note);
-      return;
-    case 'info':
-    default:
-      elements.asideContent.innerHTML = renderInfoTab(note);
-  }
+function renderSidebar(...args) {
+  return sidebarController.renderSidebar(...args);
 }
-
-function renderInfoTab(note) {
-  return renderInfoTabMarkup({
-    note,
-    markdown: state.draftMarkdown || note.rawMarkdown || '',
-    folderPath: buildFolderPath({
-      folderId: note.folderId,
-      foldersById: state.foldersById
-    }),
-    tags: state.tags,
-    tagComposer: state.noteTagComposer,
-    linkedNotes: state.linkedNotes,
-    attachments: state.attachments,
-    formatDate
-  });
+function renderInfoTab(...args) {
+  return sidebarController.renderInfoTab(...args);
 }
-
-function renderOutlineTab() {
-  const headings = extractMarkdownHeadings(state.draftMarkdown || '');
-  return renderOutlineTabMarkup({ headings });
+function renderOutlineTab(...args) {
+  return sidebarController.renderOutlineTab(...args);
 }
-
-function renderConceptsTab(note) {
-  return renderKnowledgePointPanel({
-    note,
-    points: state.knowledgePoints,
-    tagGroups: state.knowledgePointTagGroups,
-    availablePoints: state.allKnowledgePoints,
-    filters: state.knowledgePointFilters,
-    attachComposer: state.knowledgePointAttachComposer,
-    expandedIds: state.expandedKnowledgePointIds,
-    editing: state.knowledgePointEditing
-  });
+function renderConceptsTab(...args) {
+  return sidebarController.renderConceptsTab(...args);
 }
-
 function renderEditorContextMenu(...args) {
   return editorController.renderEditorContextMenu(...args);
 }
@@ -1861,262 +1763,48 @@ async function cleanupOrphanTag(tagId) {
   }
 }
 
-function replaceKnowledgePointInState(point) {
-  const nextCollections = replaceKnowledgePointCollections(state, point);
-  state.knowledgePoints = nextCollections.knowledgePoints;
-  state.allKnowledgePoints = nextCollections.allKnowledgePoints;
+function replaceKnowledgePointInState(...args) {
+  return knowledgePointController.replaceKnowledgePointInState(...args);
 }
-
-function insertKnowledgePointInState(point) {
-  const nextCollections = insertKnowledgePointCollections(state, point);
-  state.knowledgePoints = nextCollections.knowledgePoints;
-  state.allKnowledgePoints = nextCollections.allKnowledgePoints;
+function insertKnowledgePointInState(...args) {
+  return knowledgePointController.insertKnowledgePointInState(...args);
 }
-
-function removeKnowledgePointFromState(pointId) {
-  const nextCollections = removeKnowledgePointCollections(state, pointId);
-  state.knowledgePoints = nextCollections.knowledgePoints;
-  state.allKnowledgePoints = nextCollections.allKnowledgePoints;
+function removeKnowledgePointFromState(...args) {
+  return knowledgePointController.removeKnowledgePointFromState(...args);
 }
-
-function syncKnowledgePointMembership(point) {
-  const nextCollections = syncKnowledgePointMembershipCollections(
-    state,
-    point,
-    getCurrentNote()?.id ?? null
-  );
-  state.knowledgePoints = nextCollections.knowledgePoints;
-  state.allKnowledgePoints = nextCollections.allKnowledgePoints;
+function syncKnowledgePointMembership(...args) {
+  return knowledgePointController.syncKnowledgePointMembership(...args);
 }
-
-function getCurrentKnowledgePointSources() {
-  return buildCurrentNoteKnowledgePointSources(state.knowledgePoints, getCurrentNote()?.id ?? null);
+function getCurrentKnowledgePointSources(...args) {
+  return knowledgePointController.getCurrentKnowledgePointSources(...args);
 }
-
-function syncKnowledgePointMarkers() {
-  void editorRuntime.currentEditorHost?.setKnowledgePointSources(getCurrentKnowledgePointSources());
+function syncKnowledgePointMarkers(...args) {
+  return knowledgePointController.syncKnowledgePointMarkers(...args);
 }
-
-function scrollKnowledgePointCardIntoView(pointId) {
-  requestAnimationFrame(() => {
-    const cards = Array.from(elements.asideContent?.querySelectorAll('[data-knowledge-point-id]') ?? []);
-    const card = cards.find((item) => item.dataset.knowledgePointId === pointId);
-    card?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-  });
+function scrollKnowledgePointCardIntoView(...args) {
+  return knowledgePointController.scrollKnowledgePointCardIntoView(...args);
 }
-
-function focusKnowledgePointFromMarker({ sourceId, knowledgePointId }) {
-  const point = knowledgePointId
-    ? state.knowledgePoints.find((item) => item.id === knowledgePointId)
-    : state.knowledgePoints.find((item) => (item.sources ?? []).some((source) => source.id === sourceId));
-  if (!point) {
-    return;
-  }
-
-  state.asideTab = 'concepts';
-  state.expandedKnowledgePointIds = {
-    ...state.expandedKnowledgePointIds,
-    [point.id]: true
-  };
-  renderSidebar(getCurrentNote());
-  scrollKnowledgePointCardIntoView(point.id);
+function focusKnowledgePointFromMarker(...args) {
+  return knowledgePointController.focusKnowledgePointFromMarker(...args);
 }
-
-async function selectKnowledgePointSource(sourceId) {
-  if (!editorRuntime.currentEditorHost) {
-    flashStatus('编辑器尚未就绪');
-    return;
-  }
-
-  const sourcePoint = state.knowledgePoints.find((point) => (
-    (point.sources ?? []).some((source) => source.id === sourceId)
-  ));
-  if (sourcePoint) {
-    state.expandedKnowledgePointIds = {
-      ...state.expandedKnowledgePointIds,
-      [sourcePoint.id]: true
-    };
-    renderSidebar(getCurrentNote());
-  }
-
-  const selected = await editorRuntime.currentEditorHost.selectKnowledgePointSource(sourceId);
-  flashStatus(selected ? '已定位到正文片段' : '未能在正文中定位该片段');
+function selectKnowledgePointSource(...args) {
+  return knowledgePointController.selectKnowledgePointSource(...args);
 }
-
-async function createKnowledgePointFromCurrentSelection(note) {
-  if (!editorRuntime.currentEditorHost) {
-    flashStatus('编辑器尚未就绪');
-    return;
-  }
-
-  const selection = await editorRuntime.currentEditorHost.getSelectionSnapshot();
-  if (!selection) {
-    flashStatus('请先选中正文片段');
-    return;
-  }
-
-  const input = buildKnowledgePointInputFromSelection({
-    note: {
-      ...note,
-      spaceId: note.spaceId ?? state.currentSpaceId
-    },
-    selection
-  });
-
-  try {
-    let created;
-    if (state.dataMode === 'local' || state.dataMode === 'cache') {
-      created = createLocalKnowledgePointAggregate(input);
-    } else {
-      created = await knowledgeApi.createKnowledgePoint(input);
-    }
-
-    insertKnowledgePointInState(created);
-    syncKnowledgePointMarkers();
-    state.asideTab = 'concepts';
-    state.expandedKnowledgePointIds = {
-      ...state.expandedKnowledgePointIds,
-      [created.id]: true
-    };
-    renderSidebar(getCurrentNote());
-    flashStatus('已从选区创建知识点');
-  } catch (error) {
-    flashStatus(error.message || '创建知识点失败');
-  }
+function createKnowledgePointFromCurrentSelection(...args) {
+  return knowledgePointController.createKnowledgePointFromCurrentSelection(...args);
 }
-
-async function attachSelectionToExistingKnowledgePoint(pointId) {
-  const note = getCurrentNote();
-  if (!note || !editorRuntime.currentEditorHost) {
-    flashStatus('请先打开笔记并选中正文片段');
-    return;
-  }
-
-  const selection = await editorRuntime.currentEditorHost.getSelectionSnapshot();
-  if (!selection) {
-    flashStatus('请先选中要加入知识点的正文片段');
-    return;
-  }
-
-  const sourceInput = buildKnowledgePointSourceInputFromSelection({
-    note: {
-      ...note,
-      spaceId: note.spaceId ?? state.currentSpaceId
-    },
-    selection
-  });
-
-  try {
-    let updated;
-    if (state.dataMode === 'local' || state.dataMode === 'cache') {
-      const point = state.allKnowledgePoints.find((item) => item.id === pointId);
-      updated = addLocalKnowledgePointSource(point, sourceInput, note.id);
-      if (!updated) {
-        flashStatus('未找到要加入的知识点');
-        return;
-      }
-    } else {
-      updated = await knowledgeApi.addSourceToKnowledgePoint(pointId, sourceInput);
-    }
-
-    syncKnowledgePointMembership(updated);
-    state.asideTab = 'concepts';
-    state.knowledgePointAttachComposer = { query: '', isOpen: false };
-    state.expandedKnowledgePointIds = {
-      ...state.expandedKnowledgePointIds,
-      [updated.id]: true
-    };
-    syncKnowledgePointMarkers();
-    renderSidebar(getCurrentNote());
-    flashStatus('已加入已有知识点');
-  } catch (error) {
-    flashStatus(error.message || '加入已有知识点失败');
-  }
+function attachSelectionToExistingKnowledgePoint(...args) {
+  return knowledgePointController.attachSelectionToExistingKnowledgePoint(...args);
 }
-
-async function removeKnowledgePointSourceFromCurrentNote(sourceId) {
-  try {
-    let updated;
-    if (state.dataMode === 'local' || state.dataMode === 'cache') {
-      const point = state.allKnowledgePoints.find((item) => (item.sources ?? []).some((source) => source.id === sourceId));
-      if (!point) {
-        return;
-      }
-      const result = removeLocalKnowledgePointSource({
-        point,
-        sourceId,
-        currentNoteId: getCurrentNote()?.id
-      });
-      if (result.reason === 'last-source') {
-        flashStatus('知识点至少需要保留一个原文片段');
-        return;
-      }
-      if (!result.updatedPoint) {
-        return;
-      }
-      updated = result.updatedPoint;
-    } else {
-      updated = await knowledgeApi.deleteKnowledgePointSource(sourceId);
-    }
-
-    syncKnowledgePointMembership(updated);
-    syncKnowledgePointMarkers();
-    renderSidebar(getCurrentNote());
-    flashStatus('已从当前笔记移除该原文片段');
-  } catch (error) {
-    flashStatus(error.message || '移除原文片段失败');
-  }
+function removeKnowledgePointSourceFromCurrentNote(...args) {
+  return knowledgePointController.removeKnowledgePointSourceFromCurrentNote(...args);
 }
-
-async function deleteKnowledgePointFromLibrary(pointId) {
-  try {
-    if (state.dataMode === 'local' || state.dataMode === 'cache') {
-      removeKnowledgePointFromState(pointId);
-    } else {
-      await knowledgeApi.deleteKnowledgePoint(pointId);
-      removeKnowledgePointFromState(pointId);
-    }
-
-    syncKnowledgePointMarkers();
-    renderSidebar(getCurrentNote());
-    flashStatus('知识点已删除');
-  } catch (error) {
-    flashStatus(error.message || '删除知识点失败');
-  }
+function deleteKnowledgePointFromLibrary(...args) {
+  return knowledgePointController.deleteKnowledgePointFromLibrary(...args);
 }
-
-async function updateCurrentKnowledgePoint(pointId, form) {
-  const point = state.knowledgePoints.find((item) => item.id === pointId);
-  if (!point) {
-    return;
-  }
-
-  const updates = getKnowledgePointFormUpdates(form);
-  if (!updates.title) {
-    flashStatus('知识点标题不能为空');
-    return;
-  }
-
-  try {
-    if (state.dataMode === 'local' || state.dataMode === 'cache') {
-      replaceKnowledgePointInState({
-        ...point,
-        ...updates,
-        updatedAt: new Date().toISOString()
-      });
-    } else {
-      replaceKnowledgePointInState(await knowledgeApi.updateKnowledgePoint(pointId, updates));
-    }
-
-    state.knowledgePointEditing = null;
-    syncKnowledgePointMarkers();
-    renderSidebar(getCurrentNote());
-    flashStatus('知识点已更新');
-  } catch (error) {
-    flashStatus(error.message || '更新知识点失败');
-  }
+function updateCurrentKnowledgePoint(...args) {
+  return knowledgePointController.updateCurrentKnowledgePoint(...args);
 }
-
 function formatDate(value) {
   if (!value) {
     return '-';

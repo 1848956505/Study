@@ -6,7 +6,7 @@ import { extractMarkdownHeadings, renderMarkdownPreview } from '../lib/markdown.
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const clientJs = fs.readFileSync(path.resolve(__dirname, '../src/client.js'), 'utf8');
+const sidebarControllerJs = fs.readFileSync(path.resolve(__dirname, '../src/controllers/sidebar-controller.js'), 'utf8');
 const outlinePanelJs = fs.readFileSync(path.resolve(__dirname, '../lib/sidebar/outline-panel.js'), 'utf8');
 
 const headings = extractMarkdownHeadings(`# 一级
@@ -60,7 +60,7 @@ assert.match(
   'outline items should keep their heading order so rich editor jumps can fall back to DOM heading position'
 );
 assert.match(
-  clientJs,
+  sidebarControllerJs,
   /querySelectorAll\('h1, h2, h3, h4, h5, h6'\)/,
   'outline click handling should inspect rendered heading elements instead of relying on preview-only ids'
 );

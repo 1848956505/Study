@@ -9,7 +9,7 @@ import {
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const clientJs = fs.readFileSync(path.resolve(__dirname, '../src/client.js'), 'utf8');
+const sidebarControllerJs = fs.readFileSync(path.resolve(__dirname, '../src/controllers/sidebar-controller.js'), 'utf8');
 
 const points = [
   {
@@ -81,19 +81,19 @@ assert.match(html, /data-knowledge-point-edit-form/);
 assert.doesNotMatch(html, /知识点面板将在 V1\.4 后续迭代接入/);
 
 assert.match(
-  clientJs,
+  sidebarControllerJs,
   /renderKnowledgePointPanel/,
-  'client should delegate knowledge point panel rendering to the module'
+  'sidebar controller should delegate knowledge point panel rendering to the module'
 );
 assert.match(
-  clientJs,
+  sidebarControllerJs,
   /knowledgeApi\.loadNoteSideData/,
-  'client should load knowledge point side data through the API service'
+  'sidebar controller should load knowledge point side data through the API service'
 );
 assert.match(
-  clientJs,
+  sidebarControllerJs,
   /knowledgePointTagGroups/,
-  'client should keep rendering backend knowledge point tag groups'
+  'sidebar controller should keep rendering backend knowledge point tag groups'
 );
 
 console.log('ok - V2.0.2 knowledge point panel renders cards and filters');

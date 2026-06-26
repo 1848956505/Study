@@ -52,10 +52,10 @@ assert.equal(input.sources[0].contextBefore, '学习策略中，');
 assert.equal(input.sources[0].contextAfter, '这也是复习计划的核心依据。');
 assert.deepEqual(input.sources[0].anchor, selection.anchor);
 
-const clientJs = readFileSync(new URL('../src/client.js', import.meta.url), 'utf8');
+const knowledgePointControllerJs = readFileSync(new URL('../src/controllers/knowledge-point-controller.js', import.meta.url), 'utf8');
 const editorContextMenuControllerJs = readFileSync(new URL('../src/controllers/editor/context-menu-controller.js', import.meta.url), 'utf8');
 assert.match(editorContextMenuControllerJs, /create-knowledge-point/);
-assert.match(clientJs, /getSelectionSnapshot/);
-assert.match(clientJs, /knowledgeApi\.createKnowledgePoint\(input\)/);
+assert.match(knowledgePointControllerJs, /getSelectionSnapshot/);
+assert.match(knowledgePointControllerJs, /knowledgeApi\.createKnowledgePoint\(input\)/);
 
 console.log('ok - V2.0.3 builds knowledge point payload from editor selection');
