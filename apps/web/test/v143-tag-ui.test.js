@@ -6,11 +6,17 @@ import { fileURLToPath } from 'node:url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const clientJs = fs.readFileSync(path.resolve(__dirname, '../src/client.js'), 'utf8');
-const mainJs = fs.readFileSync(path.resolve(__dirname, '../src/main.js'), 'utf8');
+const appStateJs = fs.readFileSync(path.resolve(__dirname, '../src/app/app-state.js'), 'utf8');
+const shellHtmlJs = fs.readFileSync(path.resolve(__dirname, '../src/server/shell-html.js'), 'utf8');
 const componentsCss = fs.readFileSync(path.resolve(__dirname, '../styles/components.css'), 'utf8');
 const searchEventsJs = fs.readFileSync(path.resolve(__dirname, '../lib/events/search-events.js'), 'utf8');
 const searchRenderersJs = fs.readFileSync(path.resolve(__dirname, '../lib/search/renderers.js'), 'utf8');
 const searchStateJs = fs.readFileSync(path.resolve(__dirname, '../lib/search/state.js'), 'utf8');
+const searchControllerJs = fs.readFileSync(path.resolve(__dirname, '../src/controllers/search-controller.js'), 'utf8');
+const controllerActionProxiesJs = fs.readFileSync(
+  path.resolve(__dirname, '../src/controllers/controller-action-proxies.js'),
+  'utf8'
+);
 
 assert.doesNotMatch(
   clientJs,
@@ -19,21 +25,27 @@ assert.doesNotMatch(
 );
 
 assert.match(
-  mainJs,
+  shellHtmlJs,
   /id="global-search-shell"/,
   'top bar should expose a dedicated search shell container for the tag-aware search UI'
 );
 
 assert.match(
-  clientJs,
+  appStateJs,
   /search:\s*\{\s*keyword:\s*''[\s\S]*selectedTagIds:\s*\[\][\s\S]*isOpen:\s*false/,
   'workspace state should centralize keyword and selected tags inside a dedicated search state object'
 );
 
 assert.match(
-  clientJs,
+  searchControllerJs,
   /function renderSearchShell\(\)/,
-  'top bar should render its search shell through a dedicated renderer'
+  'top bar should render its search shell through the search controller'
+);
+
+assert.match(
+  controllerActionProxiesJs,
+  /'renderSearchShell'/,
+  'client search shell compatibility entry should be provided by controller action proxies'
 );
 
 assert.match(
@@ -61,9 +73,9 @@ assert.match(
 );
 
 assert.match(
-  clientJs,
+  searchControllerJs,
   /function renderSearchPanel\(\)/,
-  'top bar should provide a dedicated dropdown panel for search and tag filtering'
+  'top bar should provide a dedicated dropdown panel through the search controller'
 );
 
 assert.match(
@@ -85,19 +97,19 @@ assert.match(
 );
 
 assert.match(
-  clientJs,
+  searchControllerJs,
   /reconcileSelection\(\);\s*renderAll\(\);/,
   'changing keyword or tag filters should re-run the shared left-tree filtering flow'
 );
 
 assert.doesNotMatch(
-  clientJs,
+  searchControllerJs,
   /addEventListener\('focusin'/,
   'search shell should not re-render itself on focusin, otherwise typing can become unstable'
 );
 
 assert.doesNotMatch(
-  clientJs,
+  searchControllerJs,
   /function renderSearchShell\(\)[\s\S]{0,1600}requestAnimationFrame/,
   'search shell renderer should not force refocus after every open/render cycle'
 );

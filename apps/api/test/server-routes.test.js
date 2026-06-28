@@ -15,6 +15,33 @@ function requestJson({ port, method, path, body }) {
 
 export const serverRouteTests = [
   {
+    name: 'root route returns API service information',
+    async run() {
+      const { createAppContext } = await import('../src/app.factory.js');
+      const { createServer } = await import('../src/server.js');
+
+      const appContext = createAppContext();
+      const server = createServer({ appContext });
+
+      await new Promise((resolve) => server.listen(0, resolve));
+      const port = server.address().port;
+
+      try {
+        const result = await requestJson({
+          port,
+          method: 'GET',
+          path: '/'
+        });
+
+        assert.equal(result.status, 200);
+        assert.equal(result.payload.data.name, 'Study Accelerator API');
+        assert.equal(result.payload.data.health, '/api/health');
+      } finally {
+        await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+      }
+    }
+  },
+  {
     name: 'knowledge point routes create list update source and soft delete',
     async run() {
       const { createAppContext } = await import('../src/app.factory.js');

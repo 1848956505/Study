@@ -1,0 +1,180 @@
+import {
+  getSelectedSearchTags as selectSearchTags,
+  getTagUsageCount as countTagUsage,
+  getVisibleSearchTags as selectVisibleSearchTags,
+  hasActiveSearchFilters as hasSearchFilters,
+  matchesSearch as valueMatchesSearch,
+  noteMatchesSelectedTags as noteHasSelectedSearchTags,
+  toggleSearchTagId,
+  withTagUsageCounts
+} from '../../lib/search/state.js';
+import {
+  renderSearchPanel as renderSearchPanelMarkup,
+  renderSearchShell as renderSearchShellMarkup,
+  renderSelectedSearchChips
+} from '../../lib/search/renderers.js';
+import {
+  getSearchResultNotes as selectSearchResultNotes,
+  getVisibleNavigationNotes,
+  matchesFolderSearch as folderMatchesNavigationSearch
+} from '../../lib/navigation/visibility.js';
+
+export function createSearchController(deps) {
+  const {
+    state,
+    elements,
+    getActiveNotes,
+    reconcileSelection,
+    renderAll
+  } = deps;
+
+function getVisibleNotes({ selectedFolderId = state.selectedFolderId } = {}) {
+  return getVisibleNavigationNotes({
+    notes: state.allNotes,
+    foldersById: state.foldersById,
+    selectedFolderId,
+    search: state.search
+  });
+}
+
+function getSearchResultNotes() {
+  return selectSearchResultNotes({
+    notes: state.allNotes,
+    foldersById: state.foldersById,
+    selectedFolderId: state.selectedFolderId,
+    search: state.search
+  });
+}
+
+function getSelectedSearchTags() {
+  return withTagUsageCounts(selectSearchTags(state.tags, state.search), getActiveNotes());
+}
+
+function getVisibleSearchTags() {
+  return withTagUsageCounts(selectVisibleSearchTags(state.tags, state.search), getActiveNotes());
+}
+
+function getTagUsageCount(tagId) {
+  return countTagUsage(getActiveNotes(), tagId);
+}
+
+function hasActiveSearchFilters() {
+  return hasSearchFilters(state.search);
+}
+
+function noteMatchesSelectedTags(note) {
+  return noteHasSelectedSearchTags(note, state.search);
+}
+
+function matchesSearch(value) {
+  return valueMatchesSearch(value, state.search);
+}
+
+function matchesFolderSearch(folder) {
+  return folderMatchesNavigationSearch({
+    folder,
+    notes: state.allNotes,
+    search: state.search
+  });
+}
+
+function toggleSearchTagFilter(tagId) {
+  if (!tagId) {
+    return;
+  }
+
+  state.search.selectedTagIds = toggleSearchTagId(state.search.selectedTagIds, tagId);
+  state.search.isOpen = true;
+  reconcileSelection();
+  renderAll();
+}
+
+function clearSearchFilters() {
+  state.search.keyword = '';
+  state.search.selectedTagIds = [];
+  state.search.isOpen = false;
+  reconcileSelection();
+  renderAll();
+}
+
+function focusSearchInput() {
+  const input = elements.globalSearchShell?.querySelector('[data-search-input]');
+  if (!input) {
+    return;
+  }
+
+  input.focus();
+  const cursor = input.value.length;
+  input.setSelectionRange(cursor, cursor);
+}
+
+function renderSearchShell() {
+  if (!elements.globalSearchShell) {
+    return;
+  }
+
+  const hasFilters = hasActiveSearchFilters();
+  const selectedTags = getSelectedSearchTags();
+
+  if (!elements.globalSearchShell.querySelector('.top-bar-search-control')) {
+    elements.globalSearchShell.innerHTML = renderSearchShellMarkup();
+  }
+
+  elements.globalSearchShell.dataset.open = String(state.search.isOpen);
+
+  const control = elements.globalSearchShell.querySelector('.top-bar-search-control');
+  const input = elements.globalSearchShell.querySelector('[data-search-input]');
+  const chipTrack = elements.globalSearchShell.querySelector('[data-search-chip-track]');
+  const clearButton = elements.globalSearchShell.querySelector('[data-search-clear]');
+  const panelHost = elements.globalSearchShell.querySelector('.search-panel-host');
+
+  if (control) {
+    control.dataset.open = String(state.search.isOpen);
+  }
+
+  if (input && input.value !== state.search.keyword) {
+    input.value = state.search.keyword;
+  }
+
+  if (chipTrack) {
+    chipTrack.innerHTML = renderSelectedSearchChips(selectedTags);
+  }
+
+  if (clearButton) {
+    clearButton.hidden = !hasFilters;
+  }
+
+  if (panelHost) {
+    panelHost.innerHTML = state.search.isOpen || hasFilters ? renderSearchPanel() : '';
+  }
+}
+
+function renderSearchPanel() {
+  const selectedTags = getSelectedSearchTags();
+  const visibleTags = getVisibleSearchTags();
+  return renderSearchPanelMarkup({
+    selectedTags,
+    visibleTags,
+    selectedTagIds: state.search.selectedTagIds,
+    hasFilters: hasActiveSearchFilters(),
+    isOpen: state.search.isOpen
+  });
+}
+
+  return {
+    getVisibleNotes,
+    getSearchResultNotes,
+    getSelectedSearchTags,
+    getVisibleSearchTags,
+    getTagUsageCount,
+    hasActiveSearchFilters,
+    noteMatchesSelectedTags,
+    matchesSearch,
+    matchesFolderSearch,
+    toggleSearchTagFilter,
+    clearSearchFilters,
+    focusSearchInput,
+    renderSearchShell,
+    renderSearchPanel
+  };
+}

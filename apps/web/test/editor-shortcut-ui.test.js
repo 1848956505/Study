@@ -5,13 +5,16 @@ import { fileURLToPath } from 'node:url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const editorCommandsControllerJs = fs.readFileSync(path.resolve(__dirname, '../src/controllers/editor/commands-controller.js'), 'utf8');
+const shortcutCommandControllerJs = fs.readFileSync(path.resolve(__dirname, '../src/controllers/editor/commands/shortcut-controller.js'), 'utf8');
 const menuRenderersJs = fs.readFileSync(path.resolve(__dirname, '../lib/editor/menu-renderers.js'), 'utf8');
 const documentKeyboardEventsJs = fs.readFileSync(
   path.resolve(__dirname, '../lib/events/document-keyboard-events.js'),
   'utf8'
 );
 const milkdownEntry = fs.readFileSync(path.resolve(__dirname, '../lib/editor/milkdown-entry.js'), 'utf8');
+const commandResolversJs = fs.readFileSync(path.resolve(__dirname, '../lib/editor/milkdown/commands/command-resolvers.js'), 'utf8');
+const shortcutHandlersJs = fs.readFileSync(path.resolve(__dirname, '../lib/editor/milkdown/commands/shortcut-handlers.js'), 'utf8');
+const indentationHandlersJs = fs.readFileSync(path.resolve(__dirname, '../lib/editor/milkdown/commands/indentation-handlers.js'), 'utf8');
 const componentsCss = fs.readFileSync(path.resolve(__dirname, '../styles/components.css'), 'utf8');
 
 assert.match(
@@ -35,39 +38,44 @@ assert.match(
   'editor should resolve custom keyboard shortcuts from the shared shortcut helper'
 );
 assert.match(
-  editorCommandsControllerJs,
+  shortcutCommandControllerJs,
   /function handleResolvedEditorShortcut\(action\)/,
   'editor should route resolved shortcuts through a dedicated action handler'
 );
 assert.match(
-  editorCommandsControllerJs,
+  shortcutCommandControllerJs,
   /editorRuntime\.currentEditorHost\.run\(action\)/,
   'resolved shortcuts should be executed through the editor host command system'
 );
 assert.match(
-  milkdownEntry,
+  commandResolversJs,
   /'paragraph': \(\) => \(\{ key: turnIntoTextCommand\.key \}\)/,
   'editor command resolver should support H0/paragraph shortcuts'
 );
 assert.match(
-  milkdownEntry,
+  commandResolversJs,
   /'heading-5': \(\) => \(\{ key: wrapInHeadingCommand\.key, payload: 5 \}\)/,
   'editor command resolver should support H5 shortcuts'
 );
 assert.match(
-  milkdownEntry,
+  commandResolversJs,
   /'heading-6': \(\) => \(\{ key: wrapInHeadingCommand\.key, payload: 6 \}\)/,
   'editor command resolver should support H6 shortcuts'
 );
 assert.match(
-  milkdownEntry,
+  indentationHandlersJs,
   /sinkListItemCommand\.key/,
   'editor shortcut execution should support Tab-based list indentation'
 );
 assert.match(
-  milkdownEntry,
+  indentationHandlersJs,
   /liftListItemCommand\.key/,
   'editor shortcut execution should support Shift\+Tab outdent and list toggle removal'
+);
+assert.match(
+  shortcutHandlersJs,
+  /from '.\/indentation-handlers\.js'/,
+  'shortcut handlers should delegate indentation shortcuts to the dedicated indentation module'
 );
 assert.match(
   componentsCss,

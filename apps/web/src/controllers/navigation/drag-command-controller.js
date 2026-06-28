@@ -40,7 +40,7 @@ function resetDragState({ rerender = true } = {}) {
   };
 
   if (rerender) {
-    getController().getController().renderFolders();
+    getController().renderFolders();
     return;
   }
 

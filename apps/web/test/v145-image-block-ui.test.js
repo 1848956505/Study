@@ -1,4 +1,4 @@
-import assert from 'node:assert/strict';
+﻿import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -9,8 +9,27 @@ const editorHostControllerJs = fs.readFileSync(path.resolve(__dirname, '../src/c
 const menuRenderersJs = fs.readFileSync(path.resolve(__dirname, '../lib/editor/menu-renderers.js'), 'utf8');
 const editorContextModelJs = fs.readFileSync(path.resolve(__dirname, '../lib/editor/context-menu-model.js'), 'utf8');
 const milkdownEntry = fs.readFileSync(path.resolve(__dirname, '../lib/editor/milkdown-entry.js'), 'utf8');
+const commandResolversJs = fs.readFileSync(path.resolve(__dirname, '../lib/editor/milkdown/commands/command-resolvers.js'), 'utf8');
 const componentsCss = fs.readFileSync(path.resolve(__dirname, '../styles/components.css'), 'utf8');
 const enhancedImageBlock = fs.readFileSync(path.resolve(__dirname, '../lib/editor/enhanced-image-block.js'), 'utf8');
+const imageBlockAttrsJs = fs.readFileSync(path.resolve(__dirname, '../lib/editor/image-block-attrs.js'), 'utf8');
+const imageBlockDomJs = fs.readFileSync(path.resolve(__dirname, '../lib/editor/image-block-dom.js'), 'utf8');
+const imageBlockRenderersJs = fs.readFileSync(path.resolve(__dirname, '../lib/editor/image-block-renderers.js'), 'utf8');
+const imageBlockResizeJs = fs.readFileSync(path.resolve(__dirname, '../lib/editor/image-block-resize.js'), 'utf8');
+const imageLayoutControllerJs = fs.readFileSync(path.resolve(__dirname, '../lib/editor/milkdown/host/image-layout-controller.js'), 'utf8');
+const imageUploadJs = fs.readFileSync(path.resolve(__dirname, '../lib/editor/milkdown/host/image-upload.js'), 'utf8');
+const imageBlockPluginJs = [
+  enhancedImageBlock,
+  imageBlockAttrsJs,
+  imageBlockDomJs,
+  imageBlockRenderersJs,
+  imageBlockResizeJs
+].join('\n');
+const milkdownImageHostJs = [
+  milkdownEntry,
+  imageLayoutControllerJs,
+  imageUploadJs
+].join('\n');
 const buildScript = fs.readFileSync(path.resolve(__dirname, '../../../scripts/build-milkdown-bundle.mjs'), 'utf8');
 
 assert.match(
@@ -81,18 +100,18 @@ assert.match(
 
 assert.match(
   milkdownEntry,
-  /uploadButton:\s*'上传'[\s\S]*uploadPlaceholderText:\s*'或粘贴图片链接'[\s\S]*confirmButton:\s*`[\s\S]*<svg[\s\S]*`/,
+  /uploadButton:\s*'上传'[\s\S]*uploadPlaceholderText:\s*'或粘贴图片链接'[\s\S]*confirmButton:\s*[\s\S]*<svg[\s\S]*/,
   'image-block configuration should localize the empty-state actions and use a compact icon confirm control'
 );
 
 assert.match(
-  milkdownEntry,
+  milkdownImageHostJs,
   /\/api\/storage\/attachments/,
   'image uploads should go through the attachment storage endpoint'
 );
 
 assert.match(
-  milkdownEntry,
+  commandResolversJs,
   /image: \(\) => \(\{ key: insertImageBlockCommand\.key \}\)/,
   'image command should insert an image-block node instead of raw markdown'
 );
@@ -104,7 +123,7 @@ assert.match(
 );
 
 assert.match(
-  milkdownEntry,
+  milkdownImageHostJs,
   /refreshImageBlockLayouts\(\)|scheduleImageLayoutRefresh\(\)|ResizeObserver/,
   'editor host should re-run image sizing after layout changes'
 );
@@ -128,7 +147,7 @@ assert.doesNotMatch(
 );
 
 assert.match(
-  enhancedImageBlock,
+  imageBlockPluginJs,
   /computeFittedImageDimensions|computeResizeRatioFromCornerDrag|IMAGE_PRESET_BUTTONS/,
   'enhanced image block plugin should centralize fitted sizing, proportional dragging, and preset controls'
 );
@@ -146,13 +165,13 @@ assert.doesNotMatch(
 );
 
 assert.match(
-  enhancedImageBlock,
-  /bindAttrs\(node\)\s*\{[\s\S]*updateFilledImageState\(\)[\s\S]*\}/,
+  imageBlockAttrsJs,
+  /bindImageBlockAttrs\(controller, node\)\s*\{[\s\S]*updateFilledImageState\(\)[\s\S]*\}/,
   'image updates should patch the filled state in place when the source already exists'
 );
 
 assert.match(
-  enhancedImageBlock,
+  imageBlockRenderersJs,
   /createButton\(\{[\s\S]*className:\s*'confirm'[\s\S]*title:\s*'插入图片链接'[\s\S]*\}\)/,
   'empty-state confirm action should be rendered as a real button with an accessible title'
 );

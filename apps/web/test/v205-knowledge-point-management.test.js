@@ -61,13 +61,16 @@ assert.equal(sourceInput.startOffset, 12);
 assert.equal(sourceInput.endOffset, 24);
 
 const knowledgePointControllerJs = readFileSync(new URL('../src/controllers/knowledge-point-controller.js', import.meta.url), 'utf8');
-assert.match(knowledgePointControllerJs, /allKnowledgePoints/);
-assert.match(knowledgePointControllerJs, /attachSelectionToExistingKnowledgePoint/);
-assert.match(knowledgePointControllerJs, /removeKnowledgePointSourceFromCurrentNote/);
-assert.match(knowledgePointControllerJs, /deleteKnowledgePointFromLibrary/);
-assert.match(knowledgePointControllerJs, /knowledgeApi\.addSourceToKnowledgePoint\(pointId, sourceInput\)/);
-assert.match(knowledgePointControllerJs, /knowledgeApi\.deleteKnowledgePointSource\(sourceId\)/);
-assert.match(knowledgePointControllerJs, /knowledgeApi\.deleteKnowledgePoint\(pointId\)/);
-assert.match(knowledgePointControllerJs, /knowledgeApi\.updateKnowledgePoint\(pointId, updates\)/);
+const knowledgePointSelectionControllerJs = readFileSync(new URL('../src/controllers/knowledge-point/selection-controller.js', import.meta.url), 'utf8');
+const knowledgePointMutationControllerJs = readFileSync(new URL('../src/controllers/knowledge-point/mutation-controller.js', import.meta.url), 'utf8');
+assert.match(knowledgePointControllerJs, /createKnowledgePointSelectionController/);
+assert.match(knowledgePointSelectionControllerJs, /allKnowledgePoints/);
+assert.match(knowledgePointSelectionControllerJs, /attachSelectionToExistingKnowledgePoint/);
+assert.match(knowledgePointMutationControllerJs, /removeKnowledgePointSourceFromCurrentNote/);
+assert.match(knowledgePointMutationControllerJs, /deleteKnowledgePointFromLibrary/);
+assert.match(knowledgePointSelectionControllerJs, /knowledgeApi\.addSourceToKnowledgePoint\(pointId, sourceInput\)/);
+assert.match(knowledgePointMutationControllerJs, /knowledgeApi\.deleteKnowledgePointSource\(sourceId\)/);
+assert.match(knowledgePointMutationControllerJs, /knowledgeApi\.deleteKnowledgePoint\(pointId\)/);
+assert.match(knowledgePointMutationControllerJs, /knowledgeApi\.updateKnowledgePoint\(pointId, updates\)/);
 
 console.log('ok - V2.0.5 knowledge point management hooks are wired');

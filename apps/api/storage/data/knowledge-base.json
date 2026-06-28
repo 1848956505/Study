@@ -270,7 +270,7 @@
     {
       "id": "note-openclaw-1781186936709",
       "spaceId": "space-demo",
-      "folderId": "folder-a-1781181578973",
+      "folderId": "folder-test-1780743955788",
       "title": "test",
       "rawMarkdown": "# test\n\n",
       "plainText": "test",
@@ -278,10 +278,10 @@
       "status": "draft",
       "sourceType": "manual",
       "favorite": true,
-      "deleted": false,
+      "deleted": true,
       "tagIds": [],
       "createdAt": "2026-06-11T14:08:56.709Z",
-      "updatedAt": "2026-06-17T14:33:10.730Z"
+      "updatedAt": "2026-06-28T09:38:11.055Z"
     },
     {
       "id": "note-ai-1781239209931",
@@ -499,16 +499,16 @@
       "spaceId": "space-demo",
       "folderId": "folder-test-1780743955788",
       "title": "text",
-      "rawMarkdown": "# text\n\n本文件主要用于测试知识点\n\n",
-      "plainText": "text 本文件主要用于测试知识点",
+      "rawMarkdown": "# text\n\n本文件主要用于测试知识点\n\n你好\n\n<br />\n\n",
+      "plainText": "text 本文件主要用于测试知识点 你好 <br /",
       "internalLinks": [],
       "status": "draft",
       "sourceType": "manual",
       "favorite": false,
-      "deleted": false,
+      "deleted": true,
       "tagIds": [],
       "createdAt": "2026-06-18T08:01:48.359Z",
-      "updatedAt": "2026-06-21T16:17:51.501Z"
+      "updatedAt": "2026-06-28T09:38:13.468Z"
     },
     {
       "id": "note-item-1781837783410",
@@ -529,7 +529,7 @@
     {
       "id": "note-s01e01-1781837819877",
       "spaceId": "space-demo",
-      "folderId": null,
+      "folderId": "folder-item-1781837769177",
       "title": "S01E01",
       "rawMarkdown": "# S01E01\n\nThere is nothing to tell,  Its just some guy walkaway\n\nCommon you are going on with a guy, there get be somthing to wrong.right?\n\nalreat , fell very () nice\n\nso , this is \n\nwait, does he eatch ak, cause  i don't  want   her  gone  through a car\n\nOK, everbody relax, relax , this not even a day, it is not , it is two people going up to a dinner and not having a sex\n\nsounds like a data meet\n\nhello 人名\n\nThen i look down and i realize there is a phone , there\n\nInstead of ... That's right\n\n杂音太大了，听不见\n\nall of a sudden the phone start to ring\n\nnow i don't know what to do everbody start to look at me\n\nthey were look at 1 before , \n\nfinially, i figure a bed..\n\nand ten throunds of my mother, which is very very wire beacuse she never called \n\nHi, \n\nThis gus  salls  hello i want to kill myself\n\nyou ok ? 人名\n\n",
       "plainText": "S01E01 There is nothing to tell, Its just some guy walkaway Common you are going on with a guy, there get be somthing to wrong.right? alreat , fell very () nice so , this is wait, does he eatch ak, cause i don't want her gone through a car OK, everbody relax, relax , this not even a day, it is not , it is two people going up to a dinner and not having a sex sounds like a data meet hello 人名 Then i look down and i realize there is a phone , there Instead of ... That's right 杂音太大了，听不见 all of a sudden the phone start to ring now i don't know what to do everbody start to look at me they were look at 1 before , finially, i figure a bed.. and ten throunds of my mother, which is very very wire beacuse she never called Hi, This gus salls hello i want to kill myself you ok ? 人名",
@@ -540,7 +540,7 @@
       "deleted": false,
       "tagIds": [],
       "createdAt": "2026-06-19T02:56:59.877Z",
-      "updatedAt": "2026-06-22T03:10:46.157Z"
+      "updatedAt": "2026-06-28T09:37:29.454Z"
     },
     {
       "id": "note-item-1782097854811",
@@ -557,6 +557,22 @@
       "tagIds": [],
       "createdAt": "2026-06-22T03:10:54.812Z",
       "updatedAt": "2026-06-25T03:30:10.333Z"
+    },
+    {
+      "id": "note-test-1782639502470",
+      "spaceId": "space-demo",
+      "folderId": "folder-test-1780743955788",
+      "title": "test",
+      "rawMarkdown": "# test\n\n",
+      "plainText": "test",
+      "internalLinks": [],
+      "status": "draft",
+      "sourceType": "manual",
+      "favorite": false,
+      "deleted": false,
+      "tagIds": [],
+      "createdAt": "2026-06-28T09:38:22.470Z",
+      "updatedAt": "2026-06-28T09:38:22.470Z"
     }
   ],
   "attachments": [

@@ -80,7 +80,7 @@ async function handleContextMenuAction(action) {
         return;
       }
       state.deleteIntent = { kind: 'folder', targetId: folder.id };
-      getController().getController().renderFolders();
+      getController().renderFolders();
       return;
     }
     case 'delete-note': {
@@ -89,7 +89,7 @@ async function handleContextMenuAction(action) {
         return;
       }
       state.deleteIntent = { kind: 'note', targetId: note.id };
-      getController().getController().renderFolders();
+      getController().renderFolders();
       return;
     }
     default:
@@ -107,7 +107,7 @@ function openContextMenu({ x, y, targetKind, targetId }) {
     targetKind,
     targetId
   };
-  getController().getController().renderContextMenu();
+  getController().renderContextMenu();
 }
 
 function closeContextMenu() {
@@ -121,7 +121,7 @@ function closeContextMenu() {
     targetKind: null,
     targetId: null
   };
-  getController().getController().renderContextMenu();
+  getController().renderContextMenu();
 }
 
 function closeSectionMenu() {
@@ -129,8 +129,8 @@ function closeSectionMenu() {
     return;
   }
   state.sectionMenuOpen = false;
-  getController().getController().renderSectionMenu();
-  getController().getController().renderHeaderToggle();
+  getController().renderSectionMenu();
+  getController().renderHeaderToggle();
 }
 
 function clearDeleteIntent({ rerender = true } = {}) {
@@ -139,7 +139,7 @@ function clearDeleteIntent({ rerender = true } = {}) {
   }
   state.deleteIntent = null;
   if (rerender) {
-    getController().getController().renderFolders();
+    getController().renderFolders();
   }
 }
 

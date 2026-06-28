@@ -66,6 +66,7 @@ export function createEditorHostController(deps, getController) {
     createKnowledgePointFromCurrentSelection,
     syncKnowledgePointMarkers,
     getCurrentKnowledgePointSources,
+    restoreEditorScrollPosition,
     flashStatus,
     escapeHtml,
     escapeAttribute

@@ -5,7 +5,10 @@ import { fileURLToPath } from 'node:url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const clientJs = fs.readFileSync(path.resolve(__dirname, '../src/client.js'), 'utf8');
+const workspaceControllerJs = fs.readFileSync(
+  path.resolve(__dirname, '../src/controllers/workspace-controller.js'),
+  'utf8'
+);
 const menuRenderersJs = fs.readFileSync(path.resolve(__dirname, '../lib/editor/menu-renderers.js'), 'utf8');
 const workspaceNormalizationJs = fs.readFileSync(
   path.resolve(__dirname, '../lib/workspace-normalization.js'),
@@ -71,7 +74,7 @@ assert.match(
   'note normalization should preserve deleted state'
 );
 assert.match(
-  clientJs,
+  workspaceControllerJs,
   /knowledgeApi\.loadWorkspaceResources\(spaceId\)/,
   'workspace refresh should load backend workspace resources through the API service'
 );

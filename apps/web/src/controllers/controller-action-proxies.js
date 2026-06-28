@@ -1,0 +1,198 @@
+const CONTROLLER_ACTIONS = {
+  scrollController: [
+    'saveCurrentEditorScrollPosition',
+    'restoreEditorScrollPosition',
+    'persistScrollPositions',
+    'loadScrollPositions'
+  ],
+  workspaceController: [
+    'startWorkspaceLoad',
+    'loadWorkspaceData',
+    'ensureSpaceId',
+    'refreshKnowledgeData',
+    'persistBackendCache',
+    'readBackendCache',
+    'readInitialWorkspaceSnapshot',
+    'loadCachedWorkspaceData',
+    'loadMockWorkspaceData'
+  ],
+  sidebarController: [
+    'loadCurrentNoteSideData',
+    'loadApiNoteSideData',
+    'loadLocalNoteSideData',
+    'clearNoteSideData',
+    'findOutlineHeadingTarget',
+    'renderSidebar',
+    'renderInfoTab',
+    'renderOutlineTab',
+    'renderConceptsTab'
+  ],
+  shellController: [
+    'renderRail',
+    'renderAll',
+    'safeRenderStep',
+    'getEffectiveViewState',
+    'renderWorkspaceViewState',
+    'renderStatus'
+  ],
+  searchController: [
+    'renderSearchShell',
+    'renderSearchPanel',
+    'getVisibleNotes',
+    'getSearchResultNotes',
+    'getSelectedSearchTags',
+    'getVisibleSearchTags',
+    'getTagUsageCount',
+    'hasActiveSearchFilters',
+    'noteMatchesSelectedTags',
+    'matchesSearch',
+    'matchesFolderSearch',
+    'toggleSearchTagFilter',
+    'clearSearchFilters',
+    'focusSearchInput'
+  ],
+  navigationController: [
+    'renderFolders',
+    'renderNavSection',
+    'renderMaterialsTree',
+    'renderFolderNode',
+    'renderNoteNode',
+    'renderRecycleNoteNode',
+    'renderInlineEditorRow',
+    'renderDeleteIntentRow',
+    'renderEmptyItem',
+    'renderHeaderToggle',
+    'renderContextMenu',
+    'getContextMenuItems',
+    'renderSectionMenu',
+    'handleContextMenuAction',
+    'startTreeEditor',
+    'cancelTreeEditor',
+    'submitTreeEditor',
+    'commitDelete',
+    'commitDrop',
+    'resetDragState',
+    'syncDragIndicators',
+    'resolveDropTarget',
+    'canDropOnTarget',
+    'isRootDropActive',
+    'clearDeleteIntent',
+    'createFolder',
+    'renameFolder',
+    'deleteFolder',
+    'moveFolder',
+    'createNote',
+    'renameNote',
+    'deleteNote',
+    'permanentlyDeleteNote',
+    'restoreNote',
+    'emptyRecycleBin',
+    'setNoteFavorite',
+    'moveNote',
+    'selectFolder',
+    'selectNote',
+    'toggleFolderOpen',
+    'openFolderBranch',
+    'openContextMenu',
+    'closeContextMenu',
+    'closeSectionMenu',
+    'validateTreeEditorName',
+    'focusInlineEditor',
+    'getDirectNotesForFolder',
+    'isCreateEditorForParent'
+  ],
+  tabController: [
+    'renderTabs',
+    'renderTabMenu',
+    'openTabMenu',
+    'closeTabMenu',
+    'handleTabMenuAction',
+    'handleTabClose',
+    'resetTabDragState',
+    'syncTabDragIndicators'
+  ],
+  editorController: [
+    'renderEditorMenuBar',
+    'renderPreviewPane',
+    'renderSourceEditorPane',
+    'renderSourceEditorView',
+    'renderEditor',
+    'syncSourcePreview',
+    'renderEditorContextMenu',
+    'syncEditorContextSubmenuLayout',
+    'openEditorContextMenu',
+    'closeEditorContextMenu',
+    'handleEditorContextMenuAction',
+    'handleFormat',
+    'shouldHandleEditorShortcut',
+    'handleResolvedEditorShortcut',
+    'handleParagraphMenuAction',
+    'handleFormatMenuAction',
+    'handleViewMenuAction',
+    'handleEditMenuAction',
+    'handleEditorPanelAction',
+    'closeEditorMenuBar',
+    'openEditorPanel',
+    'closeEditorPanel',
+    'handleFileMenuAction',
+    'importMarkdownFiles',
+    'getMenuTargetFolderId',
+    'getSiblingNames',
+    'duplicateCurrentNote',
+    'exportCurrentNoteAsMarkdown',
+    'exportCurrentNoteAsPdf',
+    'exportCurrentNoteAsPdfStable',
+    'triggerFileDownload',
+    'teardownEditorHost',
+    'mountEditorHost',
+    'syncEditorContextMenuPosition',
+    'handleEditorMarkdownChange',
+    'renderEditorSaveIndicator',
+    'renderEditorPanel',
+    'openTableInsertDialog',
+    'closeTableInsertDialog',
+    'submitTableInsertDialog',
+    'renderTableInsertDialog',
+    'scheduleAutosave',
+    'persistDraft'
+  ],
+  tagController: [
+    'replaceTagInState',
+    'removeTagFromState',
+    'addTagToCurrentNote',
+    'removeTagFromCurrentNote',
+    'createTagAndAssignToCurrentNote',
+    'cleanupOrphanTag'
+  ],
+  knowledgePointController: [
+    'replaceKnowledgePointInState',
+    'insertKnowledgePointInState',
+    'removeKnowledgePointFromState',
+    'syncKnowledgePointMembership',
+    'getCurrentKnowledgePointSources',
+    'syncKnowledgePointMarkers',
+    'scrollKnowledgePointCardIntoView',
+    'focusKnowledgePointFromMarker',
+    'selectKnowledgePointSource',
+    'createKnowledgePointFromCurrentSelection',
+    'attachSelectionToExistingKnowledgePoint',
+    'removeKnowledgePointSourceFromCurrentNote',
+    'deleteKnowledgePointFromLibrary',
+    'updateCurrentKnowledgePoint'
+  ]
+};
+
+export function createControllerActionProxies(getControllers) {
+  const actions = {};
+
+  Object.entries(CONTROLLER_ACTIONS).forEach(([controllerName, methodNames]) => {
+    methodNames.forEach((methodName) => {
+      actions[methodName] = (...args) => {
+        const controller = getControllers()[controllerName];
+        return controller[methodName](...args);
+      };
+    });
+  });
+
+  return actions;
+}

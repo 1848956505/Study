@@ -5,9 +5,9 @@ import { fileURLToPath } from 'node:url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const clientJs = fs.readFileSync(path.resolve(__dirname, '../src/client.js'), 'utf8');
+const appStateJs = fs.readFileSync(path.resolve(__dirname, '../src/app/app-state.js'), 'utf8');
 const sidebarControllerJs = fs.readFileSync(path.resolve(__dirname, '../src/controllers/sidebar-controller.js'), 'utf8');
-const mainJs = fs.readFileSync(path.resolve(__dirname, '../src/main.js'), 'utf8');
+const shellHtmlJs = fs.readFileSync(path.resolve(__dirname, '../src/server/shell-html.js'), 'utf8');
 const sectionMenuRenderersJs = fs.readFileSync(
   path.resolve(__dirname, '../lib/navigation/section-menu-renderers.js'),
   'utf8'
@@ -25,13 +25,13 @@ assert.match(
 );
 
 assert.match(
-  mainJs,
+  shellHtmlJs,
   /id="aside-tabs"[\s\S]*data-aside-tab="info"[\s\S]*信息[\s\S]*data-aside-tab="outline"[\s\S]*大纲[\s\S]*data-aside-tab="concepts"[\s\S]*知识点[\s\S]*data-aside-tab="ai"[\s\S]*AI/,
   'right rail shell should expose the four V1.4 tabs in a dedicated tab bar'
 );
 
 assert.match(
-  clientJs,
+  appStateJs,
   /asideTab:\s*'info'/,
   'workspace state should track the active right-rail tab and default it to the info panel'
 );

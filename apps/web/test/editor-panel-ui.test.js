@@ -7,12 +7,14 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const clientJs = fs.readFileSync(path.resolve(__dirname, '../src/client.js'), 'utf8');
 const editorPanelControllerJs = fs.readFileSync(path.resolve(__dirname, '../src/controllers/editor/panel-controller.js'), 'utf8');
+const tableDialogControllerJs = fs.readFileSync(path.resolve(__dirname, '../src/controllers/editor/panel/table-dialog-controller.js'), 'utf8');
 const menuRenderersJs = fs.readFileSync(path.resolve(__dirname, '../lib/editor/menu-renderers.js'), 'utf8');
 const documentKeyboardEventsJs = fs.readFileSync(
   path.resolve(__dirname, '../lib/events/document-keyboard-events.js'),
   'utf8'
 );
 const milkdownEntry = fs.readFileSync(path.resolve(__dirname, '../lib/editor/milkdown-entry.js'), 'utf8');
+const commandResolversJs = fs.readFileSync(path.resolve(__dirname, '../lib/editor/milkdown/commands/command-resolvers.js'), 'utf8');
 const componentsCss = fs.readFileSync(path.resolve(__dirname, '../styles/components.css'), 'utf8');
 
 assert.doesNotMatch(clientJs, /window\.prompt\(/, 'editor find/replace must not use browser prompt dialogs');
@@ -26,6 +28,16 @@ assert.match(
   editorPanelControllerJs,
   /submit-previous/,
   'editor find panel should expose an explicit previous-match action'
+);
+assert.match(
+  tableDialogControllerJs,
+  /renderTableInsertDialog/,
+  'table insertion dialog should live in the table dialog controller'
+);
+assert.doesNotMatch(
+  editorPanelControllerJs,
+  /normalizeTableDialogValue/,
+  'editor panel controller should not own table dialog input normalization'
 );
 assert.match(
   menuRenderersJs,
@@ -76,7 +88,7 @@ assert.match(
   'editor format menu should expose an internal link action'
 );
 assert.match(
-  milkdownEntry,
+  commandResolversJs,
   /'internal-link': \(\) => \(\{ key: insertInternalLinkCommand\.key \}\)/,
   'milkdown command resolver should expose an internal link command'
 );

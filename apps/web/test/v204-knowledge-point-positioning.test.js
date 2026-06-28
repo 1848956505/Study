@@ -32,19 +32,22 @@ assert.match(html, /data-knowledge-point-id="kp-v204"/);
 assert.match(html, /点击原文片段应回到正文选区/);
 
 const knowledgePointControllerJs = readFileSync(new URL('../src/controllers/knowledge-point-controller.js', import.meta.url), 'utf8');
+const knowledgePointMarkerControllerJs = readFileSync(new URL('../src/controllers/knowledge-point/marker-controller.js', import.meta.url), 'utf8');
 const asideClickEventsJs = readFileSync(new URL('../lib/events/aside-events/click.js', import.meta.url), 'utf8');
 const editorContentEventsJs = readFileSync(new URL('../lib/events/editor-content-events.js', import.meta.url), 'utf8');
-assert.match(knowledgePointControllerJs, /syncKnowledgePointMarkers/);
-assert.match(knowledgePointControllerJs, /setKnowledgePointSources/);
-assert.match(knowledgePointControllerJs, /selectKnowledgePointSource/);
+assert.match(knowledgePointControllerJs, /createKnowledgePointMarkerController/);
+assert.match(knowledgePointMarkerControllerJs, /syncKnowledgePointMarkers/);
+assert.match(knowledgePointMarkerControllerJs, /setKnowledgePointSources/);
+assert.match(knowledgePointMarkerControllerJs, /selectKnowledgePointSource/);
 assert.match(asideClickEventsJs, /data-knowledge-point-source-jump/);
 assert.match(editorContentEventsJs, /knowledge-point-marker-click/);
-assert.match(knowledgePointControllerJs, /scrollKnowledgePointCardIntoView/);
+assert.match(knowledgePointMarkerControllerJs, /scrollKnowledgePointCardIntoView/);
 
 const milkdownEntry = readFileSync(new URL('../lib/editor/milkdown-entry.js', import.meta.url), 'utf8');
-assert.match(milkdownEntry, /knowledgePointHighlightPluginKey/);
+const knowledgePointHighlightPluginJs = readFileSync(new URL('../lib/editor/milkdown/plugins/knowledge-point-highlight-plugin.js', import.meta.url), 'utf8');
+assert.match(`${milkdownEntry}\n${knowledgePointHighlightPluginJs}`, /knowledgePointHighlightPluginKey/);
 assert.match(milkdownEntry, /setKnowledgePointSources/);
 assert.match(milkdownEntry, /selectKnowledgePointSource/);
-assert.match(milkdownEntry, /data-knowledge-point-source-id/);
+assert.match(knowledgePointHighlightPluginJs, /data-knowledge-point-source-id/);
 
 console.log('ok - V2.0.4 knowledge point source positioning hooks are wired');

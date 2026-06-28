@@ -7,7 +7,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const clientJs = fs.readFileSync(path.resolve(__dirname, '../src/client.js'), 'utf8');
 const editorContextMenuControllerJs = fs.readFileSync(path.resolve(__dirname, '../src/controllers/editor/context-menu-controller.js'), 'utf8');
-const mainJs = fs.readFileSync(path.resolve(__dirname, '../src/main.js'), 'utf8');
+const shellHtmlJs = fs.readFileSync(path.resolve(__dirname, '../src/server/shell-html.js'), 'utf8');
 const componentsCss = fs.readFileSync(path.resolve(__dirname, '../styles/components.css'), 'utf8');
 const milkdownEntry = fs.readFileSync(path.resolve(__dirname, '../lib/editor/milkdown-entry.js'), 'utf8');
 const sidebarInfoPanelJs = fs.readFileSync(path.resolve(__dirname, '../lib/sidebar/info-panel.js'), 'utf8');
@@ -29,7 +29,7 @@ assert.doesNotMatch(
 );
 
 assert.match(
-  mainJs,
+  shellHtmlJs,
   /id="editor-context-menu"/,
   'workspace shell should expose a dedicated editor context menu mount'
 );

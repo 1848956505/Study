@@ -6,14 +6,18 @@ import { fileURLToPath } from 'node:url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const clientJs = fs.readFileSync(path.resolve(__dirname, '../src/client.js'), 'utf8');
+const shellControllerJs = fs.readFileSync(
+  path.resolve(__dirname, '../src/controllers/shell-controller.js'),
+  'utf8'
+);
 
 assert.match(
-  clientJs,
+  shellControllerJs,
   /function safeRenderStep\(/,
   'client rendering should isolate failures to a single render step'
 );
 assert.match(
-  clientJs,
+  shellControllerJs,
   /safeRenderStep\('navigation'/,
   'navigation rendering should not be allowed to stop editor and sidebar rendering'
 );
@@ -30,7 +34,7 @@ assert.match(
 );
 assert.match(
   initializeBody,
-  /createControllers\(\);[\s\S]*(renderAll\(\)|loadWorkspaceData\()/,
+  /createControllers\(\);[\s\S]*startWorkspaceLoad\(\);/,
   'client initialization should create controllers before first render or data load'
 );
 

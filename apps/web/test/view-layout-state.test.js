@@ -6,26 +6,29 @@ import { fileURLToPath } from 'node:url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const componentsCss = fs.readFileSync(path.resolve(__dirname, '../styles/components.css'), 'utf8');
-const clientJs = fs.readFileSync(path.resolve(__dirname, '../src/client.js'), 'utf8');
+const shellControllerJs = fs.readFileSync(
+  path.resolve(__dirname, '../src/controllers/shell-controller.js'),
+  'utf8'
+);
 const viewStateJs = fs.readFileSync(path.resolve(__dirname, '../lib/shell/view-state.js'), 'utf8');
 
 assert.match(
-  clientJs,
+  shellControllerJs,
   /elements\.workspace\.dataset\.leftHidden = String\(!effectiveView\.showLeftSidebar\);/,
   'workspace view state should expose left-sidebar visibility as a data attribute'
 );
 assert.match(
-  clientJs,
+  shellControllerJs,
   /elements\.workspace\.dataset\.rightHidden = String\(!effectiveView\.showRightSidebar\);/,
   'workspace view state should expose right-sidebar visibility as a data attribute'
 );
 assert.match(
-  clientJs,
+  shellControllerJs,
   /elements\.sidebar\.hidden = !effectiveView\.showLeftSidebar;/,
   'workspace view state should hide the left sidebar element itself'
 );
 assert.match(
-  clientJs,
+  shellControllerJs,
   /elements\.aside\.hidden = !effectiveView\.showRightSidebar;/,
   'workspace view state should hide the right sidebar element itself'
 );
