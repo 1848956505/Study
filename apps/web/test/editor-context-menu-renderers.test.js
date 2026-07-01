@@ -1,0 +1,27 @@
+import assert from 'node:assert/strict';
+import {
+  EDITOR_CONTEXT_INSERT_ITEMS,
+  EDITOR_CONTEXT_PRIMARY_ACTIONS,
+  editorContextActionMeta
+} from '../lib/editor/context-menu-model.js';
+import { renderEditorContextIconSvg } from '../lib/editor/context-menu-icons.js';
+import {
+  renderEditorContextMenuItem,
+  renderEditorContextMenuMarkup
+} from '../lib/editor/context-menu-renderers.js';
+
+const shortcutLabel = (action) => (action === 'bold' ? 'Ctrl+B' : '');
+const html = renderEditorContextMenuMarkup({ getShortcutLabel: shortcutLabel });
+
+assert.deepEqual(EDITOR_CONTEXT_PRIMARY_ACTIONS, ['cut', 'copy', 'paste', 'delete']);
+assert.ok(EDITOR_CONTEXT_INSERT_ITEMS.includes('table'));
+assert.ok(EDITOR_CONTEXT_INSERT_ITEMS.includes('image'));
+assert.equal(editorContextActionMeta['heading-6'].label, 'H6');
+assert.match(html, /editor-context-action-row-primary[\s\S]*data-editor-context-action="cut"/);
+assert.match(html, /data-editor-context-action="bold"/);
+assert.match(renderEditorContextMenuItem('bold', shortcutLabel), /data-editor-context-action="bold"[\s\S]*Ctrl\+B/);
+assert.match(html, /<span>标题<\/span>[\s\S]*data-editor-context-action="heading-6"/);
+assert.match(html, /<span>插入<\/span>[\s\S]*data-editor-context-action="image"/);
+assert.match(renderEditorContextIconSvg('cut'), /<svg[\s\S]*stroke-linecap="round"/);
+
+console.log('ok - editor context menu renderers build menu markup and icons');

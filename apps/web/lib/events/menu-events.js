@@ -1,0 +1,84 @@
+// menu-events.js
+// 顶部菜单相关元素的 click 事件绑定：
+//   - contextMenu:   派发 [data-context-action] 到 handleContextMenuAction
+//   - sectionMenu:   切换 [data-section-toggle]，更新 state.secondarySections
+//                    并触发 renderFolders()
+//   - editorMenuBar: 切换 [data-editor-menu-toggle]（打开/折叠子菜单），
+//                    派发 [data-{file,edit,paragraph,format,view}-menu-action]
+//                    到对应的 handleXxxMenuAction
+//
+// 由 client.js 的 bindEvents() 在初始化时一次性注册。菜单行为在 deps
+// 指向的 command / state 模块；本 binder 只做"派发 → 调 deps"。
+// 注意 editorMenuBar handler 顶部 event.stopPropagation() 保留，
+// 防止 document.click 外部关闭链立刻把刚打开的菜单关掉。
+
+export function bindMenuEvents({ state, elements, deps }) {
+  const {
+    handleContextMenuAction,
+    renderFolders,
+    renderEditorMenuBar,
+    handleFileMenuAction,
+    handleEditMenuAction,
+    handleParagraphMenuAction,
+    handleFormatMenuAction,
+    handleViewMenuAction
+  } = deps;
+
+  elements.contextMenu?.addEventListener('click', (event) => {
+    const menuItem = event.target.closest('[data-context-action]');
+    if (!menuItem) {
+      return;
+    }
+    void handleContextMenuAction(menuItem.dataset.contextAction);
+  });
+
+  elements.sectionMenu?.addEventListener('click', (event) => {
+    const menuItem = event.target.closest('[data-section-toggle]');
+    if (!menuItem) {
+      return;
+    }
+
+    const key = menuItem.dataset.sectionToggle;
+    state.secondarySections[key] = !state.secondarySections[key];
+    renderFolders();
+  });
+
+  elements.editorMenuBar?.addEventListener('click', (event) => {
+    event.stopPropagation();
+
+    const menuToggle = event.target.closest('[data-editor-menu-toggle]');
+    if (menuToggle?.dataset.editorMenuToggle) {
+      const menuKey = menuToggle.dataset.editorMenuToggle;
+      state.editorMenuOpen = state.editorMenuOpen === menuKey ? null : menuKey;
+      renderEditorMenuBar();
+      return;
+    }
+
+    const fileAction = event.target.closest('[data-file-menu-action]');
+    if (fileAction?.dataset.fileMenuAction) {
+      void handleFileMenuAction(fileAction.dataset.fileMenuAction);
+      return;
+    }
+
+    const editAction = event.target.closest('[data-edit-menu-action]');
+    if (editAction?.dataset.editMenuAction) {
+      void handleEditMenuAction(editAction.dataset.editMenuAction);
+    }
+
+    const paragraphAction = event.target.closest('[data-paragraph-menu-action]');
+    if (paragraphAction?.dataset.paragraphMenuAction) {
+      void handleParagraphMenuAction(paragraphAction.dataset.paragraphMenuAction);
+    }
+
+    const formatAction = event.target.closest('[data-format-menu-action]');
+    if (formatAction?.dataset.formatMenuAction) {
+      void handleFormatMenuAction(formatAction.dataset.formatMenuAction);
+      return;
+    }
+
+    const viewAction = event.target.closest('[data-view-menu-action]');
+    if (viewAction?.dataset.viewMenuAction) {
+      void handleViewMenuAction(viewAction.dataset.viewMenuAction);
+    }
+  });
+}

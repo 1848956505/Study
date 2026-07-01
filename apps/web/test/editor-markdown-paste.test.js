@@ -5,41 +5,45 @@ import { fileURLToPath } from 'node:url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const clientJs = fs.readFileSync(path.resolve(__dirname, '../src/client.js'), 'utf8');
+const editCommandControllerJs = fs.readFileSync(path.resolve(__dirname, '../src/controllers/editor/commands/edit-command-controller.js'), 'utf8');
 const milkdownEntry = fs.readFileSync(path.resolve(__dirname, '../lib/editor/milkdown-entry.js'), 'utf8');
+const editorFactoryJs = fs.readFileSync(path.resolve(__dirname, '../lib/editor/milkdown/host/editor-factory.js'), 'utf8');
+const markdownPastePluginJs = fs.readFileSync(path.resolve(__dirname, '../lib/editor/milkdown/plugins/markdown-paste-plugin.js'), 'utf8');
+const markdownSliceJs = fs.readFileSync(path.resolve(__dirname, '../lib/editor/milkdown/utils/markdown-slice.js'), 'utf8');
+const milkdownPasteJs = `${milkdownEntry}\n${editorFactoryJs}\n${markdownPastePluginJs}\n${markdownSliceJs}`;
 
 assert.match(
-  milkdownEntry,
+  milkdownPasteJs,
   /import\s*\{[^}]*clipboard[^}]*\}\s*from '@milkdown\/plugin-clipboard';/,
   'milkdown editor should enable the official clipboard plugin so plain-text paste can be parsed as Markdown'
 );
 assert.match(
-  milkdownEntry,
+  milkdownPasteJs,
   /\.use\(clipboard\)/,
   'milkdown editor should register clipboard handling in the editor pipeline'
 );
 assert.match(
-  milkdownEntry,
+  milkdownPasteJs,
   /\.use\(markdownPasteBehavior\)\s*\.use\(clipboard\)/,
   'plain-text Markdown paste should be handled before the official clipboard DOM round-trip'
 );
 assert.match(
-  milkdownEntry,
+  milkdownPasteJs,
   /handlePaste[\s\S]*parseMarkdownSlice\(ctx, text\)/,
   'native paste should use the direct Markdown fragment parser instead of the clipboard DOM round-trip'
 );
 assert.match(
-  milkdownEntry,
+  milkdownPasteJs,
   /shouldPreferPlainMarkdown\(\{\s*text,\s*vscodeData\s*\}\)/,
   'plain-text Markdown parsing should preserve the official VS Code clipboard behavior'
 );
 assert.match(
-  milkdownEntry,
+  milkdownPasteJs,
   /handlePaste\(view, event, preProcessedSlice\)[\s\S]*removeSpuriousEmptyCodeBlocks\(preProcessedSlice\)/,
   'rich HTML paste should clean the already parsed ProseMirror slice without falling back to raw Markdown text'
 );
 assert.match(
-  milkdownEntry,
+  milkdownPasteJs,
   /cleanedSlice !== preProcessedSlice[\s\S]*replaceSelection\(cleanedSlice\)/,
   'the editor should take over HTML paste only when a spurious empty code block was actually removed'
 );
@@ -49,18 +53,18 @@ assert.match(
   'editor host should expose a Markdown-aware paste helper for menu-driven paste actions'
 );
 assert.match(
-  milkdownEntry,
+  milkdownPasteJs,
   /new Slice\(content,\s*0,\s*0\)/,
   'markdown paste should trim empty paragraphs and use a closed slice to prevent spurious blank blocks'
 );
 assert.doesNotMatch(
-  milkdownEntry,
+  milkdownPasteJs,
   /markdownToSlice\(text\)/,
   'markdown paste should not use markdownToSlice because its DOM round-trip duplicates fenced code blocks'
 );
 assert.match(
-  clientJs,
-  /currentEditorHost\?\.pasteMarkdown\(text\)/,
+  editCommandControllerJs,
+  /editorRuntime\.currentEditorHost\?\.pasteMarkdown\(text\)/,
   'menu paste should delegate to the editor host so pasted Markdown is formatted instead of inserted as raw source'
 );
 console.log('ok - markdown paste is routed through Milkdown clipboard parsing');

@@ -5,37 +5,53 @@ import { fileURLToPath } from 'node:url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const clientJs = fs.readFileSync(path.resolve(__dirname, '../src/client.js'), 'utf8');
-const mainJs = fs.readFileSync(path.resolve(__dirname, '../src/main.js'), 'utf8');
+const appStateJs = fs.readFileSync(path.resolve(__dirname, '../src/app/app-state.js'), 'utf8');
+const sidebarControllerJs = fs.readFileSync(path.resolve(__dirname, '../src/controllers/sidebar-controller.js'), 'utf8');
+const shellHtmlJs = fs.readFileSync(path.resolve(__dirname, '../src/server/shell-html.js'), 'utf8');
+const sectionMenuRenderersJs = fs.readFileSync(
+  path.resolve(__dirname, '../lib/navigation/section-menu-renderers.js'),
+  'utf8'
+);
+const sidebarStatsJs = fs.readFileSync(path.resolve(__dirname, '../lib/sidebar/stats.js'), 'utf8');
+const navigationSelectionJs = fs.readFileSync(
+  path.resolve(__dirname, '../lib/navigation/selection.js'),
+  'utf8'
+);
 
 assert.match(
-  clientJs,
-  /const SECONDARY_SECTION_ITEMS = \[\s*\{ key: 'favorites', label: '收藏' },\s*\{ key: 'recent', label: '最近' },\s*\{ key: 'recycle', label: '回收站' }\s*\];/,
+  sectionMenuRenderersJs,
+  /SECONDARY_SECTION_ITEMS = \[\s*\{ key: 'favorites', label: '收藏' },\s*\{ key: 'recent', label: '最近' },\s*\{ key: 'recycle', label: '回收站' }\s*\]/,
   'left navigation section toggles should only keep favorites, recent, and recycle sections after the tag redesign'
 );
 
 assert.match(
-  mainJs,
+  shellHtmlJs,
   /id="aside-tabs"[\s\S]*data-aside-tab="info"[\s\S]*信息[\s\S]*data-aside-tab="outline"[\s\S]*大纲[\s\S]*data-aside-tab="concepts"[\s\S]*知识点[\s\S]*data-aside-tab="ai"[\s\S]*AI/,
   'right rail shell should expose the four V1.4 tabs in a dedicated tab bar'
 );
 
 assert.match(
-  clientJs,
+  appStateJs,
   /asideTab:\s*'info'/,
   'workspace state should track the active right-rail tab and default it to the info panel'
 );
 
 assert.match(
-  clientJs,
+  sidebarStatsJs,
   /function getNoteStats\(markdown\)/,
-  'info tab should derive note statistics from the current markdown draft'
+  'info tab should derive note statistics through the sidebar stats module'
 );
 
 assert.match(
-  clientJs,
-  /function buildFolderPath\(folderId\)/,
-  'info tab should reconstruct the current note path instead of only showing the leaf folder name'
+  navigationSelectionJs,
+  /function buildFolderPath\(/,
+  'info tab should reconstruct the current note path through the navigation selection module'
+);
+
+assert.match(
+  sidebarControllerJs,
+  /folderPath:\s*buildFolderPath\(/,
+  'info tab should pass the reconstructed folder path into the info panel renderer'
 );
 
 console.log('ok - V1.4.0 right rail tab shell hooks are present');

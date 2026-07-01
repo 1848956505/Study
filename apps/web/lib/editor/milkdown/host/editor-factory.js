@@ -1,0 +1,69 @@
+import { defaultValueCtx, rootCtx } from '@milkdown/core';
+import { clipboard } from '@milkdown/plugin-clipboard';
+import { history } from '@milkdown/plugin-history';
+import { listener, listenerCtx } from '@milkdown/plugin-listener';
+import { commonmark } from '@milkdown/preset-commonmark';
+import { gfm } from '@milkdown/preset-gfm';
+import { tableBlock, tableBlockConfig } from '@milkdown/components/table-block';
+import { imageBlockConfig, defaultImageBlockConfig } from '@milkdown/components/image-block';
+import { Editor } from '@milkdown/core';
+import { enhancedImageBlockComponent } from '../../enhanced-image-block.js';
+import {
+  insertImageBlockCommand,
+  insertInternalLinkCommand,
+  insertLinkCommand,
+  turnIntoTaskListCommand
+} from '../commands/editor-commands.js';
+import { findHighlightBehavior } from '../plugins/find-highlight-plugin.js';
+import { knowledgePointHighlightBehavior } from '../plugins/knowledge-point-highlight-plugin.js';
+import { enhancedEnterBehavior } from '../plugins/enter-key-behavior-plugin.js';
+import { markdownPasteBehavior } from '../plugins/markdown-paste-plugin.js';
+import { taskListClickBehavior } from '../plugins/task-list-click-plugin.js';
+import {
+  highlightRemark,
+  highlightSchema
+} from '../schema/highlight-mark.js';
+import { renderTableButton } from '../table/table-buttons.js';
+
+export function createConfiguredMilkdownEditor(host, markdown) {
+  return Editor.make()
+    .config((ctx) => {
+      ctx.set(rootCtx, host.root);
+      ctx.set(defaultValueCtx, markdown);
+      ctx.set(imageBlockConfig.key, {
+        ...defaultImageBlockConfig,
+        uploadButton: '上传',
+        uploadPlaceholderText: '或粘贴图片链接',
+        confirmButton: `
+          <svg viewBox="0 0 16 16" aria-hidden="true">
+            <path d="M3.5 8.2 6.4 11l6.1-6.2"></path>
+          </svg>
+        `,
+        onUpload: async (file) => host.uploadAttachmentImage(file)
+      });
+      ctx.set(tableBlockConfig.key, {
+        renderButton: renderTableButton
+      });
+      ctx.get(listenerCtx).markdownUpdated((listenerCtxValue, nextMarkdown) => {
+        host.onChange?.(nextMarkdown, listenerCtxValue);
+      });
+    })
+    .use(commonmark)
+    .use(listener)
+    .use(history)
+    .use(markdownPasteBehavior)
+    .use(clipboard)
+    .use(gfm)
+    .use(insertLinkCommand)
+    .use(insertImageBlockCommand)
+    .use(insertInternalLinkCommand)
+    .use(turnIntoTaskListCommand)
+    .use(enhancedImageBlockComponent)
+    .use(tableBlock)
+    .use(enhancedEnterBehavior)
+    .use(findHighlightBehavior)
+    .use(knowledgePointHighlightBehavior)
+    .use(taskListClickBehavior)
+    .use(highlightRemark)
+    .use(highlightSchema);
+}

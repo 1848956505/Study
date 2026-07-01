@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "build:editor-bundle": "node ../../scripts/build-milkdown-bundle.mjs",
-    "dev": "npm run build:editor-bundle && node src/main.js"
+    "dev": "npm run build:editor-bundle && node src/main.js",
+    "test": "node test/run-tests.js"
   },
   "dependencies": {
     "@milkdown/kit": "^7.21.2",

@@ -1,0 +1,74 @@
+﻿.ghost-button,
+.solid-button,
+.subtle-button,
+.status-action,
+.chip-button {
+  border: 1px solid transparent;
+  border-radius: 999px;
+  padding: 10px 14px;
+  cursor: pointer;
+  transition:
+    transform 120ms ease,
+    border-color 120ms ease,
+    background 120ms ease,
+    color 120ms ease;
+}
+
+.ghost-button {
+  background: rgba(255, 255, 255, 0.66);
+  border-color: var(--color-border);
+  color: var(--color-text);
+}
+
+.solid-button {
+  background: linear-gradient(135deg, var(--color-accent), var(--color-accent-strong));
+  color: white;
+  box-shadow: 0 12px 24px rgba(60, 104, 255, 0.18);
+}
+
+.subtle-button,
+.status-action,
+.chip-button {
+  background: rgba(255, 255, 255, 0.56);
+  border-color: var(--color-border);
+  color: var(--color-text);
+}
+
+.ghost-button:hover,
+.solid-button:hover,
+.subtle-button:hover,
+.status-action:hover,
+.chip-button:hover {
+  transform: translateY(-1px);
+}
+
+.top-bar-user {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.78);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  font-size: 0;
+  transition:
+    border-color 120ms ease,
+    background 120ms ease,
+    color 120ms ease;
+}
+
+.top-bar-user > :not(svg) {
+  display: none !important;
+}
+
+.top-bar-user:hover,
+.top-bar-user:focus-visible {
+  border-color: rgba(60, 104, 255, 0.16);
+  background: white;
+  color: var(--color-accent-strong);
+  outline: none;
+}
+

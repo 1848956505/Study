@@ -1,0 +1,188 @@
+﻿.milkdown-host {
+  min-height: 0;
+  height: 100%;
+  overflow: auto;
+  padding: 0 8px 12px;
+}
+
+.milkdown-host[data-editor-ready='true'] {
+  cursor: text;
+}
+
+.milkdown-host .ProseMirror {
+  min-height: 100%;
+  max-width: 920px;
+  margin: 0 auto;
+  padding: 8px 16px 80px;
+  color: var(--color-text);
+  font-size: 17px;
+  line-height: 1.9;
+  outline: none;
+}
+
+.milkdown-host .ProseMirror > :first-child {
+  margin-top: 0;
+}
+
+.milkdown-host .ProseMirror h1,
+.milkdown-host .ProseMirror h2,
+.milkdown-host .ProseMirror h3 {
+  margin: 1.1em 0 0.45em;
+  font-family: var(--font-display);
+  letter-spacing: 0.01em;
+  line-height: 1.28;
+}
+
+.milkdown-host .ProseMirror h1 {
+  font-size: 42px;
+}
+
+.milkdown-host .ProseMirror h2 {
+  font-size: 32px;
+}
+
+.milkdown-host .ProseMirror h3 {
+  font-size: 24px;
+}
+
+.milkdown-host .ProseMirror p,
+.milkdown-host .ProseMirror ul,
+.milkdown-host .ProseMirror ol,
+.milkdown-host .ProseMirror blockquote,
+.milkdown-host .ProseMirror pre {
+  margin: 0 0 1em;
+}
+
+.milkdown-host .ProseMirror ul,
+.milkdown-host .ProseMirror ol {
+  padding-left: 1.4em;
+}
+
+.milkdown-host .ProseMirror li + li {
+  margin-top: 0.24em;
+}
+
+.milkdown-host .ProseMirror blockquote {
+  padding: 8px 0 8px 16px;
+  border-left: 3px solid rgba(60, 104, 255, 0.28);
+  color: var(--color-text-muted);
+}
+
+.milkdown-host .ProseMirror code {
+  padding: 0.12rem 0.34rem;
+  background: rgba(60, 104, 255, 0.08);
+  border-radius: 6px;
+  font-family: 'Consolas', 'SFMono-Regular', monospace;
+}
+
+.milkdown-host .ProseMirror mark {
+  background-color: rgba(255, 213, 79, 0.55);
+  color: inherit;
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
+.milkdown-host .ProseMirror .knowledge-point-marker {
+  border-radius: 3px;
+  background: rgba(60, 104, 255, 0.13);
+  box-shadow: inset 0 -1px 0 rgba(60, 104, 255, 0.32);
+  cursor: pointer;
+}
+
+.milkdown-host .ProseMirror .knowledge-point-marker-active {
+  background: rgba(60, 104, 255, 0.24);
+  box-shadow: inset 0 -2px 0 rgba(60, 104, 255, 0.55);
+}
+
+.milkdown-host .ProseMirror pre {
+  padding: 16px 18px;
+  background: #10182b;
+  color: #eff4ff;
+  overflow: auto;
+}
+
+.milkdown-host .ProseMirror pre code {
+  padding: 0;
+  background: transparent;
+  border-radius: 0;
+  color: inherit;
+}
+
+.milkdown-host .ProseMirror table {
+  width: 100%;
+  margin: 1.1rem 0 1.4rem;
+  border-collapse: collapse;
+  table-layout: fixed;
+  background: var(--color-surface);
+}
+
+.milkdown-host .ProseMirror th,
+.milkdown-host .ProseMirror td {
+  min-width: 96px;
+  padding: 10px 12px;
+  border: 1px solid rgba(22, 32, 51, 0.14);
+  vertical-align: top;
+  text-align: left;
+}
+
+.milkdown-host .ProseMirror th {
+  background: rgba(22, 32, 51, 0.04);
+  font-weight: 600;
+}
+
+.milkdown-host .ProseMirror .selectedCell,
+.milkdown-host .ProseMirror td.selectedCell,
+.milkdown-host .ProseMirror th.selectedCell {
+  background: rgba(60, 104, 255, 0.12);
+  box-shadow: inset 0 0 0 1px rgba(60, 104, 255, 0.24);
+}
+
+.milkdown-host .ProseMirror li[data-item-type="task"] {
+  list-style: none;
+  position: relative;
+  padding-left: 1.8em;
+}
+
+.milkdown-host .ProseMirror li[data-item-type="task"]::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0.35em;
+  width: 1em;
+  height: 1em;
+  border: 1.5px solid var(--color-text-muted);
+  border-radius: 3px;
+  cursor: pointer;
+  box-sizing: border-box;
+  background: transparent;
+  transition: background 100ms ease, border-color 100ms ease;
+}
+
+.milkdown-host .ProseMirror li[data-item-type="task"]:hover::before {
+  border-color: var(--color-accent);
+}
+
+.milkdown-host .ProseMirror li[data-item-type="task"][data-checked="true"]::before {
+  background: var(--color-accent-strong);
+  border-color: var(--color-accent-strong);
+}
+
+.milkdown-host .ProseMirror li[data-item-type="task"][data-checked="true"]::after {
+  content: '';
+  position: absolute;
+  left: 0.25em;
+  top: 0.42em;
+  width: 0.5em;
+  height: 0.25em;
+  border-left: 2px solid var(--color-surface);
+  border-bottom: 2px solid var(--color-surface);
+  transform: rotate(-45deg);
+}
+
+.milkdown-host .ProseMirror li[data-item-type="task"].ProseMirror-selectednode::before {
+  border-color: var(--color-accent);
+}
+
+.milkdown-host .ProseMirror li[data-item-type="task"] .ProseMirror {
+  padding-left: 0;
+}

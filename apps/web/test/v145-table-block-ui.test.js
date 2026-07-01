@@ -2,123 +2,149 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readCssWithImports } from './helpers/read-css.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const clientJs = fs.readFileSync(path.resolve(__dirname, '../src/client.js'), 'utf8');
+const tableDialogControllerJs = fs.readFileSync(path.resolve(__dirname, '../src/controllers/editor/panel/table-dialog-controller.js'), 'utf8');
+const menuRenderersJs = fs.readFileSync(path.resolve(__dirname, '../lib/editor/menu-renderers.js'), 'utf8');
+const editorContextModelJs = fs.readFileSync(path.resolve(__dirname, '../lib/editor/context-menu-model.js'), 'utf8');
 const milkdownEntry = fs.readFileSync(path.resolve(__dirname, '../lib/editor/milkdown-entry.js'), 'utf8');
-const componentsCss = fs.readFileSync(path.resolve(__dirname, '../styles/components.css'), 'utf8');
+const tableButtonsJs = fs.readFileSync(path.resolve(__dirname, '../lib/editor/milkdown/table/table-buttons.js'), 'utf8');
+const commandResolversJs = fs.readFileSync(path.resolve(__dirname, '../lib/editor/milkdown/commands/command-resolvers.js'), 'utf8');
+const tableDimensionsJs = fs.readFileSync(path.resolve(__dirname, '../lib/editor/milkdown/table/table-dimensions.js'), 'utf8');
+const tableDocumentJs = fs.readFileSync(path.resolve(__dirname, '../lib/editor/milkdown/table/table-document.js'), 'utf8');
+const tableHandleControllerJs = fs.readFileSync(path.resolve(__dirname, '../lib/editor/milkdown/table/table-handle-controller.js'), 'utf8');
+const tableHandleEventsJs = fs.readFileSync(path.resolve(__dirname, '../lib/editor/milkdown/table/table-handle-events.js'), 'utf8');
+const tablePinnedActionsJs = fs.readFileSync(path.resolve(__dirname, '../lib/editor/milkdown/table/table-pinned-actions.js'), 'utf8');
+const tablePinnedMenuRecoveryJs = fs.readFileSync(path.resolve(__dirname, '../lib/editor/milkdown/table/table-pinned-menu-recovery.js'), 'utf8');
+const tablePinnedStateJs = fs.readFileSync(path.resolve(__dirname, '../lib/editor/milkdown/table/table-pinned-state.js'), 'utf8');
+const editorFactoryJs = fs.readFileSync(path.resolve(__dirname, '../lib/editor/milkdown/host/editor-factory.js'), 'utf8');
+const componentsCss = readCssWithImports(path.resolve(__dirname, '../styles/components.css'));
+const milkdownTableJs = [
+  editorFactoryJs,
+  commandResolversJs,
+  tableButtonsJs,
+  tableDimensionsJs,
+  tableDocumentJs,
+  tableHandleControllerJs,
+  tableHandleEventsJs,
+  tablePinnedActionsJs,
+  tablePinnedMenuRecoveryJs,
+  tablePinnedStateJs
+].join('\n');
 
 assert.match(
-  clientJs,
-  /const formatButtons = \[[\s\S]*\{ key: 'table', label: '表格' \}[\s\S]*\];/,
+  menuRenderersJs,
+  /const PARAGRAPH_MENU_ITEMS = \[[\s\S]*\{ key: 'table', label: '表格' \}[\s\S]*\];/,
   'format menu should expose a table insertion entry'
 );
 
 assert.match(
-  clientJs,
-  /const editorContextInsertItems = \[[\s\S]*'table'[\s\S]*\];/,
+  editorContextModelJs,
+  /EDITOR_CONTEXT_INSERT_ITEMS = \[[\s\S]*'table'[\s\S]*\];/,
   'context menu insert submenu should expose table insertion'
 );
 
 assert.match(
-  clientJs,
+  editorContextModelJs,
   /table: \{ label: '表格'(?:, icon: 'table')? \}/,
   'table insertion should have a localized menu label'
 );
 
 assert.match(
-  clientJs,
+  `${clientJs}\n${tableDialogControllerJs}`,
   /editorTableDialog|renderTableInsertDialog|data-editor-table-dialog-action/,
   'editor UI should provide an in-app table insert dialog instead of relying on browser prompts'
 );
 
 assert.match(
-  milkdownEntry,
+  editorFactoryJs,
   /import\s*\{[^}]*tableBlock[^}]*tableBlockConfig[^}]*\}\s*from '@milkdown\/components\/table-block';|import\s*\{[^}]*tableBlockConfig[^}]*tableBlock[^}]*\}\s*from '@milkdown\/components\/table-block';/,
   'editor host should import the official Milkdown table block component'
 );
 
 assert.match(
-  milkdownEntry,
+  editorFactoryJs,
   /\.use\(tableBlock\)/,
   'editor host should register the Milkdown table block component'
 );
 
 assert.match(
-  milkdownEntry,
+  milkdownTableJs,
   /addRowAfterCommand|addRowBeforeCommand|addColAfterCommand|addColBeforeCommand|deleteSelectedCellsCommand|setAlignCommand|selectRowCommand|selectColCommand/,
   'editor host should import table operation commands for row, column, delete, and alignment actions'
 );
 
 assert.match(
-  milkdownEntry,
+  milkdownTableJs,
   /table:\s*\([^)]*\)\s*=>\s*\(\{\s*key:\s*insertTableCommand\.key,[\s\S]*?payload:\s*\{[\s\S]*?row:[\s\S]*?col:[\s\S]*?\}\s*\}\)/,
   'table insertion command should accept custom row and column counts'
 );
 
 assert.match(
-  milkdownEntry,
+  milkdownTableJs,
   /function syncTableHandleLabels\(|setAttribute\('title', '删除列'\)|setAttribute\('title', '删除行'\)/,
   'table handles should expose clear labels for add and delete actions'
 );
 
 assert.match(
-  milkdownEntry,
+  milkdownTableJs,
   /class TableHandleController|pinCell\(|clearPinnedTable\(|attachTableHandleController\(|syncPinnedHandleFromSelection\(|findCellFromCurrentSelection\(|openMenuKind|applyPinnedMenuState\(/,
   'editor host should keep row and column handles pinned after a cell is selected'
 );
 
 assert.match(
-  milkdownEntry,
+  milkdownTableJs,
   /schedulePinnedMenuRecovery\(|clearPinnedMenuRecovery\(|menuRecoveryTimer|menuRecoveryKind/,
   'table handle controller should keep reopening the pinned handle menu until Milkdown finishes replacing transient handle DOM'
 );
 
 assert.match(
-  milkdownEntry,
-  /tryRebindPinnedCell\(\)[\s\S]*findCellFromCurrentSelection\(\)[\s\S]*pinCell\(reboundCell\)|if \(!\(tableBlock instanceof HTMLElement\) \|\| !\(table instanceof HTMLTableElement\) \|\| !tableBlock\.isConnected \|\| !table\.isConnected\)[\s\S]*tryRebindPinnedCell\(\)/,
+  milkdownTableJs,
+  /tryRebindPinnedCell\(controller\)[\s\S]*findCellFromCurrentSelection\(controller\)[\s\S]*pinCell\(controller, reboundCell\)|if \(!\(tableBlock instanceof HTMLElement\) \|\| !\(table instanceof HTMLTableElement\) \|\| !tableBlock\.isConnected \|\| !table\.isConnected\)[\s\S]*tryRebindPinnedCell\(controller\)/,
   'pinned table handles should rebind to the freshly rendered table DOM after Milkdown replaces the selected table block'
 );
 
 assert.match(
-  milkdownEntry,
+  milkdownTableJs,
   /table-add-row-before|table-add-row-after|table-add-col-before|table-add-col-after/,
   'table handle menus should expose add-row and add-column actions directly'
 );
 
 assert.match(
-  milkdownEntry,
+  milkdownTableJs,
   /table-delete-row|table-delete-col|deleteSelectedCellsCommand/,
   'table handle menus should expose explicit delete-row and delete-column actions'
 );
 
 assert.match(
-  milkdownEntry,
+  milkdownTableJs,
   /handleRootPointerOver|handleRootPointerOut|hoverMenuKind|data-pinned-menu-visible/,
   'table handle controller should preserve the active menu while the pointer moves between the handle and its popup'
 );
 
 assert.match(
-  milkdownEntry,
+  milkdownTableJs,
   /handleDocumentPointerDown[\s\S]*button-group button[\s\S]*return|data-table-pinned-action[\s\S]*return/,
   'table handle controller should not toggle or swallow events when a pinned menu button itself is being clicked'
 );
 
 assert.match(
-  milkdownEntry,
+  milkdownTableJs,
   /ensureTableHasHeaderRowAtPos|table_header_row|table_header[\s\S]*table_row/,
   'table row and column deletes should repair the table header row when the first row is downgraded into plain cells'
 );
 
 assert.match(
-  milkdownEntry,
+  milkdownTableJs,
   /updatePinnedActionAvailability|setPinnedActionDisabled|table-add-row-before|table-delete-row/,
   'row handle actions should be able to enter a disabled state for the header row and the final remaining data row'
 );
 
 assert.doesNotMatch(
-  milkdownEntry,
+  milkdownTableJs,
   /col_drag_handle[\s\S]*?<circle[\s\S]*?row_drag_handle[\s\S]*?<circle/s,
   'drag handles should not rely on invisible circle-only icons'
 );

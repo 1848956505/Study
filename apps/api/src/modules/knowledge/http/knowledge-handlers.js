@@ -3,6 +3,7 @@ export function createKnowledgeHttpHandlers({ knowledgeModule }) {
     noteService,
     folderService,
     tagService,
+    knowledgePointService,
     knowledgeSpaceService,
     searchService,
     deleteFolderAndCleanup,
@@ -54,6 +55,9 @@ export function createKnowledgeHttpHandlers({ knowledgeModule }) {
     removeTagFromNote(params) {
       return noteService.removeTagFromNote(params.id, params.tagId);
     },
+    assignTagToNote(params, body = {}) {
+      return noteService.assignTagToNote(params.id, body.tagId);
+    },
     assignTagToNotes(body = {}) {
       return noteService.assignTagToNotes(body.noteIds ?? [], body.tagId);
     },
@@ -86,6 +90,27 @@ export function createKnowledgeHttpHandlers({ knowledgeModule }) {
     },
     listTags(query = {}) {
       return tagService.listTags(query);
+    },
+    createKnowledgePoint(body) {
+      return knowledgePointService.createKnowledgePoint(body);
+    },
+    listKnowledgePoints(query = {}) {
+      return knowledgePointService.listKnowledgePoints(query);
+    },
+    listKnowledgePointTagGroups(query = {}) {
+      return knowledgePointService.listKnowledgePointTagGroups(query);
+    },
+    updateKnowledgePoint(params, body) {
+      return knowledgePointService.updateKnowledgePoint(params.id, body);
+    },
+    deleteKnowledgePoint(params) {
+      return knowledgePointService.deleteKnowledgePoint(params.id);
+    },
+    addSourceToKnowledgePoint(params, body) {
+      return knowledgePointService.addSourceToKnowledgePoint(params.id, body);
+    },
+    deleteKnowledgePointSource(params) {
+      return knowledgePointService.deleteKnowledgePointSource(params.sourceId);
     },
     createDefaultKnowledgeSpace(body) {
       return knowledgeSpaceService.createDefaultKnowledgeSpace(body);

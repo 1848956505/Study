@@ -2,37 +2,56 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readCssWithImports } from './helpers/read-css.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const clientJs = fs.readFileSync(path.resolve(__dirname, '../src/client.js'), 'utf8');
+const editorPanelControllerJs = fs.readFileSync(path.resolve(__dirname, '../src/controllers/editor/panel-controller.js'), 'utf8');
+const tableDialogControllerJs = fs.readFileSync(path.resolve(__dirname, '../src/controllers/editor/panel/table-dialog-controller.js'), 'utf8');
+const menuRenderersJs = fs.readFileSync(path.resolve(__dirname, '../lib/editor/menu-renderers.js'), 'utf8');
+const documentKeyboardEventsJs = fs.readFileSync(
+  path.resolve(__dirname, '../lib/events/document-keyboard-events.js'),
+  'utf8'
+);
 const milkdownEntry = fs.readFileSync(path.resolve(__dirname, '../lib/editor/milkdown-entry.js'), 'utf8');
-const componentsCss = fs.readFileSync(path.resolve(__dirname, '../styles/components.css'), 'utf8');
+const commandResolversJs = fs.readFileSync(path.resolve(__dirname, '../lib/editor/milkdown/commands/command-resolvers.js'), 'utf8');
+const componentsCss = readCssWithImports(path.resolve(__dirname, '../styles/components.css'));
 
 assert.doesNotMatch(clientJs, /window\.prompt\(/, 'editor find/replace must not use browser prompt dialogs');
 assert.doesNotMatch(clientJs, /window\.find\(/, 'editor find must use the in-app search panel instead of browser find');
 assert.match(
-  clientJs,
+  editorPanelControllerJs,
   /editor-utility-panel/,
   'editor should render a custom in-app utility panel for find and replace'
 );
 assert.match(
-  clientJs,
+  editorPanelControllerJs,
   /submit-previous/,
   'editor find panel should expose an explicit previous-match action'
 );
 assert.match(
-  clientJs,
+  tableDialogControllerJs,
+  /renderTableInsertDialog/,
+  'table insertion dialog should live in the table dialog controller'
+);
+assert.doesNotMatch(
+  editorPanelControllerJs,
+  /normalizeTableDialogValue/,
+  'editor panel controller should not own table dialog input normalization'
+);
+assert.match(
+  menuRenderersJs,
   /function renderFormatMenu/,
   'editor format menu should provide a render function for the popover content'
 );
 assert.match(
-  clientJs,
-  /renderEditorMenuItem\(\{[\s\S]*actionAttr: 'data-format-menu-action'/,
+  menuRenderersJs,
+  /actionAttr: 'data-format-menu-action'/,
   'editor format menu should render actionable format menu items'
 );
 
-const formatButtonsMatch = clientJs.match(/const formatButtons = \[([\s\S]*?)\];/);
+const formatButtonsMatch = menuRenderersJs.match(/const FORMAT_MENU_ITEMS = \[([\s\S]*?)\];/);
 assert.ok(formatButtonsMatch, 'editor format button definitions should exist');
 assert.doesNotMatch(
   formatButtonsMatch[1],
@@ -41,17 +60,17 @@ assert.doesNotMatch(
 );
 assert.match(
   formatButtonsMatch[1],
-  /label: '加粗'[\s\S]*label: '斜体'[\s\S]*label: '引用'[\s\S]*label: '列表'[\s\S]*label: '行内代码'/,
-  'editor format menu should use Chinese labels'
+  /label: '加粗'[\s\S]*label: '斜体'[\s\S]*label: '删除线'[\s\S]*label: '行内代码'[\s\S]*label: '高亮'/,
+  'editor format menu should use Chinese labels and expose a highlight action'
 );
 assert.match(
-  clientJs,
-  /const paragraphMenuItems = \[[\s\S]*label: 'H1'[\s\S]*label: 'H2'[\s\S]*label: 'H3'[\s\S]*label: 'H4'[\s\S]*label: 'H5'[\s\S]*label: 'H6'/,
+  menuRenderersJs,
+  /const PARAGRAPH_MENU_ITEMS = \[[\s\S]*label: 'H1'[\s\S]*label: 'H2'[\s\S]*label: 'H3'[\s\S]*label: 'H4'[\s\S]*label: 'H5'[\s\S]*label: 'H6'/,
   'editor paragraph menu should use H1-H6 heading labels'
 );
 assert.match(
-  clientJs,
-  /document\.addEventListener\('keydown', \(event\) => \{[\s\S]*resolveEditorPanelKeyboardAction\(event\)[\s\S]*\}, true\);/,
+  documentKeyboardEventsJs,
+  /documentRef\.addEventListener\('keydown', \(event\) => \{[\s\S]*resolveEditorPanelKeyboardAction\(event\)[\s\S]*\}, true\);/,
   'editor find keyboard shortcuts should intercept Enter during capture so the editor cannot consume it first'
 );
 assert.match(
@@ -65,12 +84,12 @@ assert.match(
   'active find matches should have a dedicated highlight style'
 );
 assert.match(
-  clientJs,
+  menuRenderersJs,
   /label: '内部链接'/,
   'editor format menu should expose an internal link action'
 );
 assert.match(
-  milkdownEntry,
+  commandResolversJs,
   /'internal-link': \(\) => \(\{ key: insertInternalLinkCommand\.key \}\)/,
   'milkdown command resolver should expose an internal link command'
 );
