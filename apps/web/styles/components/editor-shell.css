@@ -1,0 +1,99 @@
+﻿.editor-shell {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+.editor-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--color-border);
+  background: rgba(255, 255, 255, 0.84);
+}
+
+.editor-toolbar[hidden] {
+  display: none !important;
+}
+
+.editor-toolbar h2 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.editor-content {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+  min-height: 0;
+  height: 100%;
+  padding: 0;
+  overflow: hidden;
+}
+
+.editor-content[data-source-open='true'] {
+  grid-template-columns: minmax(320px, 0.95fr) minmax(0, 1.05fr);
+}
+
+.editor-pane,
+.preview-pane,
+.side-pane {
+  min-height: 0;
+  height: 100%;
+  border-radius: 0;
+  border: 0;
+  background: rgba(255, 255, 255, 0.78);
+  overflow: hidden;
+}
+
+.editor-content > * + * {
+  border-left: 1px solid var(--color-border);
+}
+
+.editor-pane,
+.preview-pane {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.markdown-input {
+  width: 100%;
+  min-height: 0;
+  height: 100%;
+  padding: 14px 16px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: #fbfcff;
+  color: var(--color-text);
+  font: 13px/1.7 'Consolas', 'SFMono-Regular', monospace;
+  resize: none;
+  outline: none;
+}
+
+.markdown-input:focus {
+  border-color: rgba(60, 104, 255, 0.42);
+  box-shadow: 0 0 0 3px rgba(60, 104, 255, 0.08);
+}
+
+.pane-body {
+  min-height: 0;
+  overflow: auto;
+  padding: 14px;
+  height: 100%;
+  position: relative;
+}
+
+.pane-body-editor {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 10px;
+}
+
+.editor-pane-single {
+  border-left: 0 !important;
+}
+

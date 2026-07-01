@@ -55,6 +55,9 @@ export function createKnowledgeHttpHandlers({ knowledgeModule }) {
     removeTagFromNote(params) {
       return noteService.removeTagFromNote(params.id, params.tagId);
     },
+    assignTagToNote(params, body = {}) {
+      return noteService.assignTagToNote(params.id, body.tagId);
+    },
     assignTagToNotes(body = {}) {
       return noteService.assignTagToNotes(body.noteIds ?? [], body.tagId);
     },

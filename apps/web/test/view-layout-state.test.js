@@ -2,10 +2,11 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readCssWithImports } from './helpers/read-css.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const componentsCss = fs.readFileSync(path.resolve(__dirname, '../styles/components.css'), 'utf8');
+const componentsCss = readCssWithImports(path.resolve(__dirname, '../styles/components.css'));
 const shellControllerJs = fs.readFileSync(
   path.resolve(__dirname, '../src/controllers/shell-controller.js'),
   'utf8'

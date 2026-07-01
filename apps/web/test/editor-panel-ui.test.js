@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readCssWithImports } from './helpers/read-css.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -15,7 +16,7 @@ const documentKeyboardEventsJs = fs.readFileSync(
 );
 const milkdownEntry = fs.readFileSync(path.resolve(__dirname, '../lib/editor/milkdown-entry.js'), 'utf8');
 const commandResolversJs = fs.readFileSync(path.resolve(__dirname, '../lib/editor/milkdown/commands/command-resolvers.js'), 'utf8');
-const componentsCss = fs.readFileSync(path.resolve(__dirname, '../styles/components.css'), 'utf8');
+const componentsCss = readCssWithImports(path.resolve(__dirname, '../styles/components.css'));
 
 assert.doesNotMatch(clientJs, /window\.prompt\(/, 'editor find/replace must not use browser prompt dialogs');
 assert.doesNotMatch(clientJs, /window\.find\(/, 'editor find must use the in-app search panel instead of browser find');

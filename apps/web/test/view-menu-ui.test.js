@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readCssWithImports } from './helpers/read-css.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -10,7 +11,7 @@ const viewCommandControllerJs = fs.readFileSync(path.resolve(__dirname, '../src/
 const menuRenderersJs = fs.readFileSync(path.resolve(__dirname, '../lib/editor/menu-renderers.js'), 'utf8');
 const previewRenderersJs = fs.readFileSync(path.resolve(__dirname, '../lib/editor/preview-renderers.js'), 'utf8');
 const shellHtmlJs = fs.readFileSync(path.resolve(__dirname, '../src/server/shell-html.js'), 'utf8');
-const componentsCss = fs.readFileSync(path.resolve(__dirname, '../styles/components.css'), 'utf8');
+const componentsCss = readCssWithImports(path.resolve(__dirname, '../styles/components.css'));
 
 assert.match(
   appStateJs,

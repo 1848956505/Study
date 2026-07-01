@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readCssWithImports } from './helpers/read-css.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -19,9 +20,10 @@ const tableHandleEventsJs = fs.readFileSync(path.resolve(__dirname, '../lib/edit
 const tablePinnedActionsJs = fs.readFileSync(path.resolve(__dirname, '../lib/editor/milkdown/table/table-pinned-actions.js'), 'utf8');
 const tablePinnedMenuRecoveryJs = fs.readFileSync(path.resolve(__dirname, '../lib/editor/milkdown/table/table-pinned-menu-recovery.js'), 'utf8');
 const tablePinnedStateJs = fs.readFileSync(path.resolve(__dirname, '../lib/editor/milkdown/table/table-pinned-state.js'), 'utf8');
-const componentsCss = fs.readFileSync(path.resolve(__dirname, '../styles/components.css'), 'utf8');
+const editorFactoryJs = fs.readFileSync(path.resolve(__dirname, '../lib/editor/milkdown/host/editor-factory.js'), 'utf8');
+const componentsCss = readCssWithImports(path.resolve(__dirname, '../styles/components.css'));
 const milkdownTableJs = [
-  milkdownEntry,
+  editorFactoryJs,
   commandResolversJs,
   tableButtonsJs,
   tableDimensionsJs,
@@ -58,13 +60,13 @@ assert.match(
 );
 
 assert.match(
-  milkdownEntry,
+  editorFactoryJs,
   /import\s*\{[^}]*tableBlock[^}]*tableBlockConfig[^}]*\}\s*from '@milkdown\/components\/table-block';|import\s*\{[^}]*tableBlockConfig[^}]*tableBlock[^}]*\}\s*from '@milkdown\/components\/table-block';/,
   'editor host should import the official Milkdown table block component'
 );
 
 assert.match(
-  milkdownEntry,
+  editorFactoryJs,
   /\.use\(tableBlock\)/,
   'editor host should register the Milkdown table block component'
 );

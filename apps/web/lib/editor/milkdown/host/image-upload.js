@@ -1,36 +1,21 @@
-export async function uploadAttachmentImage({ file, noteId }) {
+export async function uploadAttachmentImage({ file, noteId, uploadAttachment }) {
   if (!(file instanceof File)) {
     throw new Error('Image upload requires a file');
   }
   if (!noteId) {
     throw new Error('Please select a note before uploading images');
   }
+  if (typeof uploadAttachment !== 'function') {
+    throw new Error('Image upload service is not available');
+  }
 
   const contentBase64 = await fileToBase64(file);
-  const response = await fetch('/api/storage/attachments', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      noteId,
-      fileName: file.name || 'image.png',
-      mimeType: file.type || 'image/png',
-      contentBase64
-    })
+  return uploadAttachment({
+    noteId,
+    fileName: file.name || 'image.png',
+    mimeType: file.type || 'image/png',
+    contentBase64
   });
-
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(payload.error || 'Image upload failed');
-  }
-
-  const attachmentId = payload?.data?.id;
-  if (!attachmentId) {
-    throw new Error('Image upload response is missing attachment id');
-  }
-
-  return `/api/storage/attachments/${encodeURIComponent(attachmentId)}/content`;
 }
 
 function fileToBase64(file) {

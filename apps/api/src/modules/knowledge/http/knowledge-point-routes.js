@@ -1,7 +1,7 @@
 import { parseBody, toQueryObject } from '../../../http/request.js';
 import { sendJson } from '../../../http/response.js';
 
-export async function handleKnowledgePointRoute({ request, response, url, appContext, knowledge }) {
+export async function handleKnowledgePointRoute({ request, response, url, knowledge }) {
   if (request.method === 'GET' && url.pathname === '/api/knowledge/knowledge-points') {
     sendJson(response, 200, {
       data: knowledge.listKnowledgePoints(toQueryObject(url))

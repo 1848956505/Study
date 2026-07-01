@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readCssWithImports } from './helpers/read-css.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -15,7 +16,7 @@ const milkdownEntry = fs.readFileSync(path.resolve(__dirname, '../lib/editor/mil
 const commandResolversJs = fs.readFileSync(path.resolve(__dirname, '../lib/editor/milkdown/commands/command-resolvers.js'), 'utf8');
 const shortcutHandlersJs = fs.readFileSync(path.resolve(__dirname, '../lib/editor/milkdown/commands/shortcut-handlers.js'), 'utf8');
 const indentationHandlersJs = fs.readFileSync(path.resolve(__dirname, '../lib/editor/milkdown/commands/indentation-handlers.js'), 'utf8');
-const componentsCss = fs.readFileSync(path.resolve(__dirname, '../styles/components.css'), 'utf8');
+const componentsCss = readCssWithImports(path.resolve(__dirname, '../styles/components.css'));
 
 assert.match(
   menuRenderersJs,

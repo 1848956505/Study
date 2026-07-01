@@ -174,6 +174,41 @@ await runTest('knowledge api sends workspace folder note and tag mutations throu
   ]);
 });
 
+await runTest('knowledge api uploads image attachments through storage endpoint', async () => {
+  const calls = [];
+  const api = createKnowledgeApi({
+    requestJson: async (url, options = {}) => {
+      calls.push({
+        url,
+        method: options.method ?? 'GET',
+        body: options.body ? JSON.parse(options.body) : null
+      });
+      return { data: { id: 'attachment 1' } };
+    }
+  });
+
+  const contentUrl = await api.uploadAttachmentImage({
+    noteId: 'note 1',
+    fileName: 'image.png',
+    mimeType: 'image/png',
+    contentBase64: 'ZmFrZQ=='
+  });
+
+  assert.equal(contentUrl, '/api/storage/attachments/attachment%201/content');
+  assert.deepEqual(calls, [
+    {
+      url: '/api/storage/attachments',
+      method: 'POST',
+      body: {
+        noteId: 'note 1',
+        fileName: 'image.png',
+        mimeType: 'image/png',
+        contentBase64: 'ZmFrZQ=='
+      }
+    }
+  ]);
+});
+
 await runTest('knowledge api imports single and multiple markdown notes through matching endpoints', async () => {
   const calls = [];
   const api = createKnowledgeApi({

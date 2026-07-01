@@ -2,13 +2,14 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readCssWithImports } from './helpers/read-css.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const clientJs = fs.readFileSync(path.resolve(__dirname, '../src/client.js'), 'utf8');
 const appStateJs = fs.readFileSync(path.resolve(__dirname, '../src/app/app-state.js'), 'utf8');
 const shellHtmlJs = fs.readFileSync(path.resolve(__dirname, '../src/server/shell-html.js'), 'utf8');
-const componentsCss = fs.readFileSync(path.resolve(__dirname, '../styles/components.css'), 'utf8');
+const componentsCss = readCssWithImports(path.resolve(__dirname, '../styles/components.css'));
 const searchEventsJs = fs.readFileSync(path.resolve(__dirname, '../lib/events/search-events.js'), 'utf8');
 const searchRenderersJs = fs.readFileSync(path.resolve(__dirname, '../lib/search/renderers.js'), 'utf8');
 const searchStateJs = fs.readFileSync(path.resolve(__dirname, '../lib/search/state.js'), 'utf8');
@@ -20,7 +21,7 @@ const controllerActionProxiesJs = fs.readFileSync(
 
 assert.doesNotMatch(
   clientJs,
-  /\{ key: 'tags', label: '标签' \}/,
+  /\{ key: 'tags', label: '鏍囩' \}/,
   'left navigation should no longer expose a dedicated tags entry after V1.4.4'
 );
 
@@ -44,8 +45,8 @@ assert.match(
 
 assert.match(
   controllerActionProxiesJs,
-  /'renderSearchShell'/,
-  'client search shell compatibility entry should be provided by controller action proxies'
+  /new Proxy\(\{\},[\s\S]*findControllerMethod\(getControllers\(\), property\)/,
+  'client search shell compatibility entries should be provided by dynamic controller action proxies'
 );
 
 assert.match(
@@ -86,7 +87,7 @@ assert.match(
 
 assert.doesNotMatch(
   clientJs,
-  /匹配笔记/,
+  /鍖归厤绗旇/,
   'dropdown panel should focus on managing filter conditions, while note results remain in the left tree'
 );
 

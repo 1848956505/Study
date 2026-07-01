@@ -2,12 +2,13 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readCssWithImports } from './helpers/read-css.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const editorContextMenuControllerJs = fs.readFileSync(path.resolve(__dirname, '../src/controllers/editor/context-menu-controller.js'), 'utf8');
 const editorContextIconsJs = fs.readFileSync(path.resolve(__dirname, '../lib/editor/context-menu-icons.js'), 'utf8');
-const componentsCss = fs.readFileSync(path.resolve(__dirname, '../styles/components.css'), 'utf8');
+const componentsCss = readCssWithImports(path.resolve(__dirname, '../styles/components.css'));
 
 assert.match(
   editorContextIconsJs,

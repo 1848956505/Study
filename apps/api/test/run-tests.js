@@ -22,6 +22,7 @@ import { knowledgeModuleTests } from './knowledge-module.test.js';
 import { knowledgeHttpTests } from './knowledge-http.test.js';
 import { appFactoryTests } from './app-factory.test.js';
 import { serverRouteTests } from './server-routes.test.js';
+import { httpRequestTests } from './http-request.test.js';
 
 const tests = [
   ...storageConfigTests,
@@ -47,6 +48,7 @@ const tests = [
   ...knowledgeHttpTests,
   ...knowledgePointHttpTests,
   ...appFactoryTests,
+  ...httpRequestTests,
   ...serverRouteTests
 ];
 

@@ -1,7 +1,7 @@
 import { parseBody, toQueryObject } from '../../../http/request.js';
 import { sendJson } from '../../../http/response.js';
 
-export async function handleSpaceRoute({ request, response, url, appContext, knowledge }) {
+export async function handleSpaceRoute({ request, response, url, knowledge }) {
   if (request.method === 'POST' && url.pathname === '/api/knowledge/spaces/default') {
     const body = await parseBody(request);
     sendJson(response, 201, {

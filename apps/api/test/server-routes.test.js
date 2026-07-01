@@ -13,6 +13,13 @@ function requestJson({ port, method, path, body }) {
   }));
 }
 
+function requestRaw({ port, method, path, headers }) {
+  return fetch(`http://127.0.0.1:${port}${path}`, {
+    method,
+    headers
+  });
+}
+
 export const serverRouteTests = [
   {
     name: 'root route returns API service information',
@@ -36,6 +43,77 @@ export const serverRouteTests = [
         assert.equal(result.status, 200);
         assert.equal(result.payload.data.name, 'Study Accelerator API');
         assert.equal(result.payload.data.health, '/api/health');
+      } finally {
+        await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+      }
+    }
+  },
+  {
+    name: 'configured CORS origin is reflected on API responses',
+    async run() {
+      const { createAppContext } = await import('../src/app.factory.js');
+      const { createServer } = await import('../src/server.js');
+
+      const appContext = createAppContext();
+      const server = createServer({
+        appContext,
+        cors: {
+          allowedOrigins: ['http://localhost:3000']
+        }
+      });
+
+      await new Promise((resolve) => server.listen(0, resolve));
+      const port = server.address().port;
+
+      try {
+        const response = await requestRaw({
+          port,
+          method: 'GET',
+          path: '/api/health',
+          headers: {
+            Origin: 'http://localhost:3000'
+          }
+        });
+
+        assert.equal(response.status, 200);
+        assert.equal(response.headers.get('access-control-allow-origin'), 'http://localhost:3000');
+        assert.equal(response.headers.get('vary'), 'Origin');
+      } finally {
+        await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+      }
+    }
+  },
+  {
+    name: 'configured CORS origin can pass preflight requests',
+    async run() {
+      const { createAppContext } = await import('../src/app.factory.js');
+      const { createServer } = await import('../src/server.js');
+
+      const appContext = createAppContext();
+      const server = createServer({
+        appContext,
+        cors: {
+          allowedOrigins: ['http://localhost:3000']
+        }
+      });
+
+      await new Promise((resolve) => server.listen(0, resolve));
+      const port = server.address().port;
+
+      try {
+        const response = await requestRaw({
+          port,
+          method: 'OPTIONS',
+          path: '/api/knowledge/notes',
+          headers: {
+            Origin: 'http://localhost:3000',
+            'Access-Control-Request-Method': 'POST'
+          }
+        });
+
+        assert.equal(response.status, 204);
+        assert.equal(response.headers.get('access-control-allow-origin'), 'http://localhost:3000');
+        assert.match(response.headers.get('access-control-allow-methods'), /POST/);
       } finally {
         await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
       }
@@ -609,7 +687,7 @@ export const serverRouteTests = [
         assert.equal(clearRecycle.payload.data.deletedCount, 1);
         assert.equal(deletedList.payload.data.length, 0);
         assert.equal(deletedDetail.status, 400);
-        assert.match(deletedDetail.payload.error, /note not found/i);
+        assert.match(deletedDetail.payload.error.message, /note not found/i);
       } finally {
         await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
       }
@@ -797,7 +875,7 @@ export const serverRouteTests = [
         assert.equal(deleted.payload.data.id, upload.payload.data.id);
         assert.equal(list.payload.data.length, 0);
         assert.equal(contentResponse.status, 400);
-        assert.match(contentPayload.error, /attachment not found/i);
+        assert.match(contentPayload.error.message, /attachment not found/i);
       } finally {
         await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
         fs.rmSync(tempDir, { recursive: true, force: true });

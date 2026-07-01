@@ -1,7 +1,7 @@
 import { parseBody, toQueryObject } from '../../../http/request.js';
 import { sendJson } from '../../../http/response.js';
 
-export async function handleTagRoute({ request, response, url, appContext, knowledge }) {
+export async function handleTagRoute({ request, response, url, knowledge }) {
   if (request.method === 'POST' && url.pathname === '/api/knowledge/tags') {
     const body = await parseBody(request);
     sendJson(response, 201, {

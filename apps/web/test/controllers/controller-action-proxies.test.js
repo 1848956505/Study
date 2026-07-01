@@ -66,4 +66,10 @@ assert.equal(
   'proxy actions should resolve controllers lazily at call time'
 );
 
+assert.throws(
+  () => actions.missingAction(),
+  /Controller action is not registered: missingAction/,
+  'missing controller actions should fail loudly'
+);
+
 console.log('controller-action-proxies tests passed');

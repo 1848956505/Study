@@ -1,11 +1,3 @@
-function normalizeSuccessPayload(payload) {
-  if (payload?.success === true && Object.prototype.hasOwnProperty.call(payload, 'data')) {
-    return { data: payload.data };
-  }
-
-  return payload ?? {};
-}
-
 function resolveErrorMessage(payload, status) {
   if (payload?.error && typeof payload.error === 'object') {
     return payload.error.message || payload.error.code || `Request failed: ${status}`;
@@ -31,7 +23,7 @@ export function createApiClient({ fetchImpl = globalThis.fetch } = {}) {
       throw new Error(resolveErrorMessage(payload, response.status));
     }
 
-    return normalizeSuccessPayload(payload);
+    return payload ?? {};
   }
 
   return { requestJson };

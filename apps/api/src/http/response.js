@@ -5,6 +5,15 @@ export function sendJson(response, statusCode, payload) {
   response.end(JSON.stringify(payload));
 }
 
+export function sendError(response, statusCode, code, message) {
+  sendJson(response, statusCode, {
+    error: {
+      code,
+      message
+    }
+  });
+}
+
 export function sendBinary(response, statusCode, content, mimeType, fileName) {
   response.writeHead(statusCode, {
     'Content-Type': mimeType || 'application/octet-stream',

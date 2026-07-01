@@ -1,7 +1,7 @@
 import { parseBody, toQueryObject } from '../../../http/request.js';
 import { sendJson } from '../../../http/response.js';
 
-export async function handleNoteRoute({ request, response, url, appContext, knowledge }) {
+export async function handleNoteRoute({ request, response, url, knowledge }) {
   if (request.method === 'GET' && url.pathname === '/api/knowledge/notes') {
     sendJson(response, 200, {
       data: knowledge.listNotes(toQueryObject(url))
@@ -57,13 +57,14 @@ export async function handleNoteRoute({ request, response, url, appContext, know
   }
 
   if (request.method === 'DELETE' && url.pathname.startsWith('/api/knowledge/notes/') && url.pathname.includes('/tags/')) {
-    const segments = url.pathname.split('/');
-    const noteId = segments[4];
-    const tagId = segments[6];
+    const tagPathMatch = url.pathname.match(/^\/api\/knowledge\/notes\/([^/]+)\/tags\/(.+)$/);
+    if (!tagPathMatch) {
+      return false;
+    }
     sendJson(response, 200, {
       data: knowledge.removeTagFromNote({
-        id: decodeURIComponent(noteId),
-        tagId: decodeURIComponent(tagId)
+        id: decodeURIComponent(tagPathMatch[1]),
+        tagId: decodeURIComponent(tagPathMatch[2])
       })
     });
     return true;
@@ -100,7 +101,10 @@ export async function handleNoteRoute({ request, response, url, appContext, know
     const noteId = url.pathname.split('/')[4];
     if (noteId === 'recycle-bin') {
       sendJson(response, 404, {
-        error: 'Route not found'
+        error: {
+          code: 'ROUTE_NOT_FOUND',
+          message: 'Route not found'
+        }
       });
       return true;
     }
@@ -144,7 +148,7 @@ export async function handleNoteRoute({ request, response, url, appContext, know
     const noteId = segments[4];
     const body = await parseBody(request);
     sendJson(response, 200, {
-      data: appContext.modules.knowledge.noteService.assignTagToNote(decodeURIComponent(noteId), body.tagId)
+      data: knowledge.assignTagToNote({ id: decodeURIComponent(noteId) }, body)
     });
     return true;
   }

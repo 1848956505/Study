@@ -149,6 +149,25 @@ export const knowledgeHttpTests = [
     }
   },
   {
+    name: 'knowledge handlers can assign one tag to one note',
+    async run() {
+      const { createKnowledgeModule } = await import('../src/modules/knowledge/index.js');
+      const { createKnowledgeHttpHandlers } = await import('../src/modules/knowledge/http/knowledge-handlers.js');
+
+      const handlers = createKnowledgeHttpHandlers({ knowledgeModule: createKnowledgeModule() });
+      handlers.createNote({
+        id: 'http-single-tag',
+        title: 'Single Tag',
+        rawMarkdown: 'single tag',
+        spaceId: 'space-1'
+      });
+
+      const tagged = handlers.assignTagToNote({ id: 'http-single-tag' }, { tagId: 'tag-one' });
+
+      assert.deepEqual(tagged.tagIds, ['tag-one']);
+    }
+  },
+  {
     name: 'knowledge handlers can return linked notes for a note detail',
     async run() {
       const { createKnowledgeModule } = await import('../src/modules/knowledge/index.js');

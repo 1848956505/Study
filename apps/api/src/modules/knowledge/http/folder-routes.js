@@ -1,7 +1,7 @@
 import { parseBody, toQueryObject } from '../../../http/request.js';
 import { sendJson } from '../../../http/response.js';
 
-export async function handleFolderRoute({ request, response, url, appContext, knowledge }) {
+export async function handleFolderRoute({ request, response, url, knowledge }) {
   if (request.method === 'POST' && url.pathname === '/api/knowledge/folders') {
     const body = await parseBody(request);
     sendJson(response, 201, {

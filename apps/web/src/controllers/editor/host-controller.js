@@ -111,6 +111,7 @@ function mountEditorHost(noteId, markdown) {
       root,
       markdown,
       noteId,
+      uploadAttachmentImage: knowledgeApi.uploadAttachmentImage,
       onChange: handleEditorMarkdownChange
     });
 

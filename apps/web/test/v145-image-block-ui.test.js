@@ -1,7 +1,8 @@
-﻿import assert from 'node:assert/strict';
+import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readCssWithImports } from './helpers/read-css.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -9,8 +10,9 @@ const editorHostControllerJs = fs.readFileSync(path.resolve(__dirname, '../src/c
 const menuRenderersJs = fs.readFileSync(path.resolve(__dirname, '../lib/editor/menu-renderers.js'), 'utf8');
 const editorContextModelJs = fs.readFileSync(path.resolve(__dirname, '../lib/editor/context-menu-model.js'), 'utf8');
 const milkdownEntry = fs.readFileSync(path.resolve(__dirname, '../lib/editor/milkdown-entry.js'), 'utf8');
+const editorFactoryJs = fs.readFileSync(path.resolve(__dirname, '../lib/editor/milkdown/host/editor-factory.js'), 'utf8');
 const commandResolversJs = fs.readFileSync(path.resolve(__dirname, '../lib/editor/milkdown/commands/command-resolvers.js'), 'utf8');
-const componentsCss = fs.readFileSync(path.resolve(__dirname, '../styles/components.css'), 'utf8');
+const componentsCss = readCssWithImports(path.resolve(__dirname, '../styles/components.css'));
 const enhancedImageBlock = fs.readFileSync(path.resolve(__dirname, '../lib/editor/enhanced-image-block.js'), 'utf8');
 const imageBlockAttrsJs = fs.readFileSync(path.resolve(__dirname, '../lib/editor/image-block-attrs.js'), 'utf8');
 const imageBlockDomJs = fs.readFileSync(path.resolve(__dirname, '../lib/editor/image-block-dom.js'), 'utf8');
@@ -18,17 +20,20 @@ const imageBlockRenderersJs = fs.readFileSync(path.resolve(__dirname, '../lib/ed
 const imageBlockResizeJs = fs.readFileSync(path.resolve(__dirname, '../lib/editor/image-block-resize.js'), 'utf8');
 const imageLayoutControllerJs = fs.readFileSync(path.resolve(__dirname, '../lib/editor/milkdown/host/image-layout-controller.js'), 'utf8');
 const imageUploadJs = fs.readFileSync(path.resolve(__dirname, '../lib/editor/milkdown/host/image-upload.js'), 'utf8');
+// 在 codex-architecture-refactor-phase-1 重构后,image/table 相关的 import 与
+// .use() 注册已从 milkdown-entry.js 迁到 milkdown/host/editor-factory.js;
+// 下列断言主要检查"插件管线是否注册了 image-block 相关能力",因此重定向到 editor-factory。
+const milkdownImageHostJs = [
+  editorFactoryJs,
+  imageLayoutControllerJs,
+  imageUploadJs
+].join('\n');
 const imageBlockPluginJs = [
   enhancedImageBlock,
   imageBlockAttrsJs,
   imageBlockDomJs,
   imageBlockRenderersJs,
   imageBlockResizeJs
-].join('\n');
-const milkdownImageHostJs = [
-  milkdownEntry,
-  imageLayoutControllerJs,
-  imageUploadJs
 ].join('\n');
 const buildScript = fs.readFileSync(path.resolve(__dirname, '../../../scripts/build-milkdown-bundle.mjs'), 'utf8');
 
@@ -51,63 +56,69 @@ assert.match(
 );
 
 assert.match(
-  milkdownEntry,
+  editorFactoryJs,
   /import \{[^}]*imageBlockConfig[^}]*defaultImageBlockConfig[^}]*\} from '@milkdown\/components\/image-block';/,
   'editor host should reuse the official Milkdown image-block config from source'
 );
 
 assert.match(
-  milkdownEntry,
-  /import \{ enhancedImageBlockComponent \} from '\.\/enhanced-image-block\.js';/,
+  editorFactoryJs,
+  /import \{ enhancedImageBlockComponent \} from '\.\.\/\.\.\/enhanced-image-block\.js';/,
   'editor host should import the local enhanced image-block plugin'
 );
 
 assert.match(
-  milkdownEntry,
+  editorFactoryJs,
   /\.use\(enhancedImageBlockComponent\)/,
   'editor host should register the local enhanced image-block plugin in the Milkdown pipeline'
 );
 
 assert.match(
-  milkdownEntry,
+  editorFactoryJs,
   /\.use\(insertImageBlockCommand\)/,
   'editor host should register the image insertion command plugin'
 );
 
 assert.match(
-  milkdownEntry,
+  editorFactoryJs,
   /\.use\(insertLinkCommand\)/,
   'editor host should register the link insertion command plugin'
 );
 
 assert.match(
-  milkdownEntry,
+  editorFactoryJs,
   /\.use\(insertInternalLinkCommand\)/,
   'editor host should register the internal-link insertion command plugin'
 );
 
 assert.match(
-  milkdownEntry,
+  editorFactoryJs,
   /\.use\(turnIntoTaskListCommand\)/,
   'editor host should register the task-list insertion command plugin'
 );
 
 assert.match(
-  milkdownEntry,
+  editorFactoryJs,
   /ctx\.set\(imageBlockConfig\.key, \{[\s\S]*onUpload: async \(file\) =>/,
   'image-block configuration should provide an upload handler'
 );
 
 assert.match(
-  milkdownEntry,
+  editorFactoryJs,
   /uploadButton:\s*'上传'[\s\S]*uploadPlaceholderText:\s*'或粘贴图片链接'[\s\S]*confirmButton:\s*[\s\S]*<svg[\s\S]*/,
   'image-block configuration should localize the empty-state actions and use a compact icon confirm control'
 );
 
 assert.match(
   milkdownImageHostJs,
-  /\/api\/storage\/attachments/,
-  'image uploads should go through the attachment storage endpoint'
+  /fileToBase64\(file\)[\s\S]*uploadAttachment\(\{/,
+  'image upload host helper should only prepare the attachment payload before calling the injected service'
+);
+
+assert.doesNotMatch(
+  imageUploadJs,
+  /\bfetch\(/,
+  'image upload host helper should not perform network requests directly'
 );
 
 assert.match(
@@ -118,8 +129,8 @@ assert.match(
 
 assert.match(
   editorHostControllerJs,
-  /createMilkdownHost\(\{\s*root,\s*markdown,\s*noteId,\s*onChange: handleEditorMarkdownChange\s*\}\)/,
-  'editor host should receive the active note id so uploads can target the current note'
+  /createMilkdownHost\(\{[\s\S]*noteId,[\s\S]*uploadAttachmentImage: knowledgeApi\.uploadAttachmentImage,[\s\S]*onChange: handleEditorMarkdownChange[\s\S]*\}\)/,
+  'editor host should receive the active note id and injected upload service'
 );
 
 assert.match(

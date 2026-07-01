@@ -40,7 +40,7 @@ import { resolveBlockCommandBehavior } from './enter-behavior.js';
 import { normalizeMarkdown } from './milkdown/utils/markdown-slice.js';
 
 export class MilkdownHost {
-  constructor({ root, markdown = '', onChange, noteId = null } = {}) {
+  constructor({ root, markdown = '', onChange, noteId = null, uploadAttachmentImage: uploadAttachment = null } = {}) {
     if (!(root instanceof HTMLElement)) {
       throw new Error('MilkdownHost requires a valid root element.');
     }
@@ -48,6 +48,7 @@ export class MilkdownHost {
     this.root = root;
     this.onChange = typeof onChange === 'function' ? onChange : null;
     this.noteId = typeof noteId === 'string' && noteId.trim() ? noteId.trim() : null;
+    this.uploadAttachment = typeof uploadAttachment === 'function' ? uploadAttachment : null;
     this.editor = null;
     this.imageLayoutObserver = null;
     this.imageLayoutRefreshFrame = 0;
@@ -170,7 +171,11 @@ export class MilkdownHost {
   }
 
   async uploadAttachmentImage(file) {
-    return uploadAttachmentImage({ file, noteId: this.noteId });
+    return uploadAttachmentImage({
+      file,
+      noteId: this.noteId,
+      uploadAttachment: this.uploadAttachment
+    });
   }
 
   async pasteMarkdown(markdown) {
